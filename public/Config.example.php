@@ -26,5 +26,6 @@ return [
     'modules' => [
         'reservations' => true,
         'billing' => true,
+        'audit' => true,
     ],
 ];

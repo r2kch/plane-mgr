@@ -53,6 +53,7 @@ In `public/Config.php` können Module für alle Benutzer global aktiviert/deakti
 'modules' => [
     'reservations' => true,
     'billing' => true,
+    'audit' => true,
 ],
 ```
 
@@ -65,6 +66,10 @@ In `public/Config.php` können Module für alle Benutzer global aktiviert/deakti
   - Menüs `Meine Rechnungen`, `Preise`, `Abrechnung` ausgeblendet
   - Seiten `my_invoices`, `rates`, `invoices`, `invoice_pdf`, `manual_flight` gesperrt
   - Dashboard: Karte `Offene Rechnungen` ausgeblendet
+
+- `audit = false`:
+  - Menü `Audit-Log` ausgeblendet
+  - Seite `index.php?page=audit` gesperrt
 
 ## Hinweise für Entwicklung:
 - `public/cleanup.php` (nur Admin) löscht Rechnungen/Rechnungspositionen und setzt Reservierungen auf "nicht verrechnet" zurück (`invoice_id = NULL`).

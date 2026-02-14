@@ -19,6 +19,7 @@ $modulePages = [
     'invoices' => 'billing',
     'invoice_pdf' => 'billing',
     'manual_flight' => 'billing',
+    'audit' => 'audit',
 ];
 if (isset($modulePages[$page]) && !module_enabled($modulePages[$page])) {
     flash('error', 'Dieses Modul ist deaktiviert.');
@@ -1137,8 +1138,9 @@ switch ($page) {
                     exit;
                 }
 
-                db()->prepare('DELETE FROM reservations WHERE id = ?')->execute([$reservationId]);
-                audit_log('delete', 'reservation', $reservationId);
+                db()->prepare("UPDATE reservations SET status = 'cancelled', cancelled_by = ? WHERE id = ?")
+                    ->execute([(int)current_user()['id'], $reservationId]);
+                audit_log('cancel', 'reservation', $reservationId);
                 flash('success', 'Reservierung gelöscht.');
             }
 
@@ -1469,7 +1471,7 @@ switch ($page) {
                                 $minutes = 0;
                             }
                             $completeDefaultHobbsStart = sprintf('%d:%02d', $hours, $minutes);
-                            $completeDefaultLandings = max(1, (int)($row['start_landings'] ?? 1));
+                            $completeDefaultLandings = 1;
                         }
                     }
                     break;
@@ -1933,7 +1935,6 @@ switch ($page) {
 
             $hobbsClock = '';
             $fromAirfield = '';
-            $startLandings = max(1, (int)($aircraftRow['start_landings'] ?? 1));
             if ($lastFlight) {
                 $lastHobbsEnd = (float)$lastFlight['hobbs_end'];
                 $hours = (int)floor($lastHobbsEnd);
@@ -1958,7 +1959,7 @@ switch ($page) {
             $manualDefaultsByAircraft[$aircraftId] = [
                 'hobbs_start' => $hobbsClock,
                 'from_airfield' => $fromAirfield,
-                'landings_count' => $startLandings,
+                'landings_count' => 1,
             ];
         }
 

@@ -41,7 +41,7 @@ function render(string $title, string $view, array $data = []): void
         <?php if (has_role('admin')): ?><a href="index.php?page=users">Benutzer</a><?php endif; ?>
         <?php if (module_enabled('billing') && has_role('admin')): ?><a href="index.php?page=rates">Preise</a><?php endif; ?>
         <?php if (module_enabled('billing') && has_role('admin', 'accounting')): ?><a href="index.php?page=invoices">Abrechnung</a><?php endif; ?>
-        <?php if (has_role('admin')): ?><a href="index.php?page=audit">Audit-Log</a><?php endif; ?>
+        <?php if (module_enabled('audit') && has_role('admin')): ?><a href="index.php?page=audit">Audit-Log</a><?php endif; ?>
       </nav>
     <?php endif; ?>
 
