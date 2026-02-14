@@ -206,6 +206,8 @@ switch ($page) {
 
     case 'aircraft':
         require_role('admin');
+        $openAircraftId = (int)($_GET['open_aircraft_id'] ?? 0);
+        $showNewAircraftForm = ((int)($_GET['new'] ?? 0)) === 1;
         $parseHobbsClock = static function (string $value): ?float {
             $trimmed = trim($value);
             if (!preg_match('/^\d+:[0-5]\d$/', $trimmed)) {
@@ -222,6 +224,7 @@ switch ($page) {
                 exit;
             }
 
+            $action = (string)($_POST['action'] ?? 'save');
             $id = (int)($_POST['id'] ?? 0);
             $imm = trim((string)($_POST['immatriculation'] ?? ''));
             $type = trim((string)($_POST['type'] ?? ''));
@@ -231,9 +234,44 @@ switch ($page) {
             $startLandings = (int)($_POST['start_landings'] ?? 1);
             $rate = (float)($_POST['base_hourly_rate'] ?? 0);
 
+            if ($action === 'delete') {
+                if ($id <= 0) {
+                    flash('error', 'Ungültiges Flugzeug.');
+                    header('Location: index.php?page=aircraft');
+                    exit;
+                }
+
+                $resCountStmt = db()->prepare('SELECT COUNT(*) FROM reservations WHERE aircraft_id = ?');
+                $resCountStmt->execute([$id]);
+                $reservationCount = (int)$resCountStmt->fetchColumn();
+                if ($reservationCount > 0) {
+                    flash('error', 'Flugzeug kann nicht gelöscht werden, da Reservierungen vorhanden sind.');
+                    header('Location: index.php?page=aircraft&open_aircraft_id=' . $id);
+                    exit;
+                }
+
+                try {
+                    db()->beginTransaction();
+                    db()->prepare('DELETE FROM aircraft_user_rates WHERE aircraft_id = ?')->execute([$id]);
+                    db()->prepare('DELETE FROM aircraft WHERE id = ?')->execute([$id]);
+                    db()->commit();
+                    audit_log('delete', 'aircraft', $id);
+                    flash('success', 'Flugzeug gelöscht.');
+                    header('Location: index.php?page=aircraft');
+                    exit;
+                } catch (Throwable $e) {
+                    if (db()->inTransaction()) {
+                        db()->rollBack();
+                    }
+                    flash('error', 'Flugzeug konnte nicht gelöscht werden.');
+                    header('Location: index.php?page=aircraft&open_aircraft_id=' . $id);
+                    exit;
+                }
+            }
+
             if ($startHobbs === null || $startLandings < 1) {
                 flash('error', 'Start HOBBS muss im Format HH:MM sein und Start Landing min. 1.');
-                header('Location: index.php?page=aircraft');
+                header('Location: index.php?page=aircraft' . ($id > 0 ? '&open_aircraft_id=' . $id : '&new=1'));
                 exit;
             }
 
@@ -242,20 +280,21 @@ switch ($page) {
                 $stmt->execute([$imm, $type, $status, $startHobbs, $startLandings, $rate, $id]);
                 audit_log('update', 'aircraft', $id, ['immatriculation' => $imm]);
                 flash('success', 'Flugzeug aktualisiert.');
+                header('Location: index.php?page=aircraft&open_aircraft_id=' . $id);
             } else {
                 $stmt = db()->prepare('INSERT INTO aircraft (immatriculation, type, status, start_hobbs, start_landings, base_hourly_rate) VALUES (?, ?, ?, ?, ?, ?)');
                 $stmt->execute([$imm, $type, $status, $startHobbs, $startLandings, $rate]);
                 $newId = (int)db()->lastInsertId();
                 audit_log('create', 'aircraft', $newId, ['immatriculation' => $imm]);
                 flash('success', 'Flugzeug angelegt.');
+                header('Location: index.php?page=aircraft');
             }
 
-            header('Location: index.php?page=aircraft');
             exit;
         }
 
         $aircraft = db()->query('SELECT * FROM aircraft ORDER BY immatriculation')->fetchAll();
-        render('Flugzeuge', 'aircraft', compact('aircraft'));
+        render('Flugzeuge', 'aircraft', compact('aircraft', 'openAircraftId', 'showNewAircraftForm'));
         break;
 
     case 'aircraft_flights':
@@ -429,6 +468,8 @@ switch ($page) {
     case 'users':
         require_role('admin');
         $userSearch = trim((string)($_GET['q'] ?? ''));
+        $openUserId = (int)($_GET['open_user_id'] ?? 0);
+        $showNewUserForm = ((int)($_GET['new'] ?? 0)) === 1;
         $usersPageUrl = 'index.php?page=users' . ($userSearch !== '' ? '&q=' . urlencode($userSearch) : '');
 
         if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -625,7 +666,7 @@ switch ($page) {
             $u['roles'] = $u['roles_csv'] ? explode(',', $u['roles_csv']) : [];
         }
         unset($u);
-        render('Benutzer', 'users', compact('users', 'userSearch'));
+        render('Benutzer', 'users', compact('users', 'userSearch', 'openUserId', 'showNewUserForm'));
         break;
 
     case 'rates':
