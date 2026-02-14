@@ -108,6 +108,10 @@ body {
 }
 
 .grid-form.narrow { max-width: 450px; }
+.auth-form {
+  max-width: 1200px;
+  grid-template-columns: minmax(380px, 1fr) minmax(380px, 1fr) minmax(220px, 360px);
+}
 .inline-form { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .checks { display: grid; gap: 4px; }
 .checks-inline { display: inline-flex; gap: 10px; flex-wrap: wrap; align-items: center; }

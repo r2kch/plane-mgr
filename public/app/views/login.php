@@ -1,7 +1,7 @@
 <section class="auth-wrap">
   <h2>Anmelden</h2>
   <?php $installationOpen = ((int)db()->query('SELECT COUNT(*) FROM users')->fetchColumn()) === 0; ?>
-  <form method="post" class="grid-form narrow">
+  <form method="post" class="grid-form auth-form">
     <input type="hidden" name="_csrf" value="<?= h(csrf_token()) ?>">
     <label>E-Mail
       <input type="email" name="email" required>

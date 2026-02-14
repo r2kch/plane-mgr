@@ -10,3 +10,6 @@
 # Optional local DB folders
 db_data/
 docker/db_data/
+
+# Local app config
+public/Config.php
