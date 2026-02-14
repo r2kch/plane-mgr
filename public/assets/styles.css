@@ -269,12 +269,38 @@ label {
   font-weight: 600;
 }
 
+.checks .checkline {
+  display: inline-flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 0;
+  min-height: 0;
+  line-height: 1.2;
+}
+
+.checks .checkline input[type="checkbox"] {
+  width: 14px;
+  height: 14px;
+  min-height: 20px;
+  margin: 0 8px 0 0;
+  flex: 0 0 auto;
+}
+
 input, select, button {
   font: inherit;
   border-radius: 10px;
   border: 1px solid var(--line);
   padding: 9px 12px;
   min-height: var(--control-height);
+}
+
+input[type="checkbox"],
+input[type="radio"] {
+  min-height: auto;
+  height: auto;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
 }
 
 select {
@@ -549,6 +575,15 @@ th {
   background: rgba(23, 96, 135, 0.08);
 }
 
+.timeline-day-link-disabled {
+  cursor: default;
+}
+
+.timeline-label-disabled {
+  color: var(--ink);
+  text-decoration: none;
+}
+
 .timeline-bar {
   position: absolute;
   top: 7px;
@@ -636,6 +671,14 @@ th {
   min-height: var(--control-height);
   padding-top: 9px;
   padding-bottom: 9px;
+}
+
+.group-grid {
+  grid-template-columns: minmax(280px, 1fr);
+}
+
+.pilot-groups {
+  margin-top: 14px;
 }
 
 @media (max-width: 680px) {

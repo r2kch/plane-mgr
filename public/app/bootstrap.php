@@ -53,6 +53,28 @@ function db(): PDO
     $pdo->exec('ALTER TABLE aircraft ADD COLUMN IF NOT EXISTS start_hobbs DECIMAL(10,2) NOT NULL DEFAULT 0.00 AFTER status');
     $pdo->exec('ALTER TABLE aircraft ADD COLUMN IF NOT EXISTS start_landings INT NOT NULL DEFAULT 1 AFTER start_hobbs');
     $pdo->exec('ALTER TABLE reservation_flights ADD COLUMN IF NOT EXISTS landings_count INT NOT NULL DEFAULT 1 AFTER landing_time');
+    $pdo->exec("CREATE TABLE IF NOT EXISTS aircraft_groups (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        name VARCHAR(100) NOT NULL UNIQUE,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )");
+    $pdo->exec("CREATE TABLE IF NOT EXISTS user_aircraft_groups (
+        user_id INT NOT NULL,
+        group_id INT NOT NULL,
+        PRIMARY KEY (user_id, group_id),
+        CONSTRAINT fk_uag_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+        CONSTRAINT fk_uag_group FOREIGN KEY (group_id) REFERENCES aircraft_groups(id) ON DELETE CASCADE
+    )");
+    $pdo->exec('ALTER TABLE aircraft ADD COLUMN IF NOT EXISTS aircraft_group_id INT NULL AFTER type');
+
+    $fkStmt = $pdo->query("SELECT COUNT(*) FROM information_schema.TABLE_CONSTRAINTS
+        WHERE CONSTRAINT_SCHEMA = DATABASE()
+          AND TABLE_NAME = 'aircraft'
+          AND CONSTRAINT_NAME = 'fk_aircraft_group'
+          AND CONSTRAINT_TYPE = 'FOREIGN KEY'");
+    if ((int)$fkStmt->fetchColumn() === 0) {
+        $pdo->exec('ALTER TABLE aircraft ADD CONSTRAINT fk_aircraft_group FOREIGN KEY (aircraft_group_id) REFERENCES aircraft_groups(id) ON DELETE SET NULL');
+    }
 
     return $pdo;
 }
@@ -188,4 +210,41 @@ function can(string $permission): bool
 function module_enabled(string $module): bool
 {
     return (bool)config('modules.' . $module, true);
+}
+
+function is_group_restricted_pilot(?array $user = null): bool
+{
+    $user ??= current_user();
+    if (!$user) {
+        return false;
+    }
+
+    $roles = $user['roles'] ?? [];
+    return in_array('pilot', $roles, true)
+        && !in_array('admin', $roles, true)
+        && !in_array('accounting', $roles, true);
+}
+
+function permitted_aircraft_ids_for_user(int $userId): array
+{
+    $stmt = db()->prepare("SELECT DISTINCT a.id
+        FROM aircraft a
+        JOIN user_aircraft_groups uag ON uag.group_id = a.aircraft_group_id
+        WHERE uag.user_id = ?
+          AND a.status = 'active'
+          AND a.aircraft_group_id IS NOT NULL");
+    $stmt->execute([$userId]);
+    return array_map(static fn($id): int => (int)$id, $stmt->fetchAll(PDO::FETCH_COLUMN));
+}
+
+function user_has_group_access_to_aircraft(int $userId, int $aircraftId): bool
+{
+    $stmt = db()->prepare("SELECT COUNT(*)
+        FROM aircraft a
+        JOIN user_aircraft_groups uag ON uag.group_id = a.aircraft_group_id
+        WHERE a.id = ?
+          AND uag.user_id = ?
+          AND a.aircraft_group_id IS NOT NULL");
+    $stmt->execute([$aircraftId, $userId]);
+    return (int)$stmt->fetchColumn() > 0;
 }

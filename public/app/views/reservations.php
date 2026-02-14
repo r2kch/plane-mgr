@@ -16,73 +16,78 @@
     $startTsForm = $isEdit ? strtotime((string)$editReservation['starts_at']) : strtotime($baseStartDate . ' 08:00:00');
     $endTsForm = $isEdit ? strtotime((string)$editReservation['ends_at']) : strtotime($baseStartDate . ' 17:00:00');
     $noteValue = $isEdit ? (string)$editReservation['notes'] : '';
+    $hasAvailableAircraft = !empty($aircraft);
   ?>
   <h3><?= $isEdit ? 'Reservierung bearbeiten' : 'Neue Reservierung' ?></h3>
-  <form method="post" class="grid-form reservation-form">
-    <input type="hidden" name="_csrf" value="<?= h(csrf_token()) ?>">
-    <input type="hidden" name="action" value="<?= h($formAction) ?>">
-    <?php if ($isEdit): ?>
-      <input type="hidden" name="reservation_id" value="<?= (int)$editReservation['id'] ?>">
-    <?php endif; ?>
+  <?php if (!$hasAvailableAircraft): ?>
+    <div class="flash flash-error">Keine reservierbaren Flugzeuge verfügbar.</div>
+  <?php else: ?>
+    <form method="post" class="grid-form reservation-form">
+      <input type="hidden" name="_csrf" value="<?= h(csrf_token()) ?>">
+      <input type="hidden" name="action" value="<?= h($formAction) ?>">
+      <?php if ($isEdit): ?>
+        <input type="hidden" name="reservation_id" value="<?= (int)$editReservation['id'] ?>">
+      <?php endif; ?>
 
-    <label class="reservation-aircraft <?= $showPilotSelect ? '' : 'reservation-aircraft-full' ?>">Flugzeug
-      <select name="aircraft_id" required>
-        <?php foreach ($aircraft as $a): ?>
-          <option value="<?= (int)$a['id'] ?>" <?= (int)$a['id'] === $selectedAircraftId ? 'selected' : '' ?>><?= h($a['immatriculation']) ?> (<?= h($a['type']) ?>)</option>
-        <?php endforeach; ?>
-      </select>
-    </label>
-
-    <?php if ($showPilotSelect): ?>
-      <label class="reservation-pilot">Pilot
-        <select name="user_id" required>
-          <?php foreach ($users as $u): ?>
-            <option value="<?= (int)$u['id'] ?>" <?= (int)$u['id'] === $selectedUserId ? 'selected' : '' ?>><?= h($u['name']) ?></option>
+      <label class="reservation-aircraft <?= $showPilotSelect ? '' : 'reservation-aircraft-full' ?>">Flugzeug
+        <select name="aircraft_id" required>
+          <?php foreach ($aircraft as $a): ?>
+            <option value="<?= (int)$a['id'] ?>" <?= (int)$a['id'] === $selectedAircraftId ? 'selected' : '' ?>><?= h($a['immatriculation']) ?> (<?= h($a['type']) ?>)</option>
           <?php endforeach; ?>
         </select>
       </label>
-    <?php endif; ?>
 
-    <label class="reservation-time reservation-start">Start
-      <div class="time-controls">
-        <input type="date" name="start_date" value="<?= h(date('Y-m-d', (int)$startTsForm)) ?>" required>
-        <select name="start_hour" required aria-label="Start Stunde">
-          <?php for ($h = 0; $h < 24; $h++): ?>
-            <option value="<?= $h ?>" <?= $h === (int)date('H', (int)$startTsForm) ? 'selected' : '' ?>><?= str_pad((string)$h, 2, '0', STR_PAD_LEFT) ?></option>
-          <?php endfor; ?>
-        </select>
-        <span class="time-sep">:</span>
-        <select name="start_minute" required aria-label="Start Minute">
-          <?php foreach ([0, 15, 30, 45] as $m): ?>
-            <option value="<?= $m ?>" <?= $m === (int)date('i', (int)$startTsForm) ? 'selected' : '' ?>><?= str_pad((string)$m, 2, '0', STR_PAD_LEFT) ?></option>
-          <?php endforeach; ?>
-        </select>
-      </div>
-    </label>
-    <label class="reservation-time reservation-end">Ende
-      <div class="time-controls">
-        <input type="date" name="end_date" value="<?= h(date('Y-m-d', (int)$endTsForm)) ?>" required>
-        <select name="end_hour" required aria-label="Ende Stunde">
-          <?php for ($h = 0; $h < 24; $h++): ?>
-            <option value="<?= $h ?>" <?= $h === (int)date('H', (int)$endTsForm) ? 'selected' : '' ?>><?= str_pad((string)$h, 2, '0', STR_PAD_LEFT) ?></option>
-          <?php endfor; ?>
-        </select>
-        <span class="time-sep">:</span>
-        <select name="end_minute" required aria-label="Ende Minute">
-          <?php foreach ([0, 15, 30, 45] as $m): ?>
-            <option value="<?= $m ?>" <?= $m === (int)date('i', (int)$endTsForm) ? 'selected' : '' ?>><?= str_pad((string)$m, 2, '0', STR_PAD_LEFT) ?></option>
-          <?php endforeach; ?>
-        </select>
-      </div>
-    </label>
-    <label class="reservation-notes">Notiz
-      <input name="notes" maxlength="500" value="<?= h($noteValue) ?>">
-    </label>
-    <button type="submit" class="reservation-submit <?= $isEdit ? 'btn-small' : '' ?>"><?= $isEdit ? 'Änderungen speichern' : 'Reservieren' ?></button>
-    <?php if ($isEdit): ?>
-      <a class="btn-ghost btn-small" href="index.php?page=reservations&month=<?= h($month) ?>">Bearbeitung abbrechen</a>
-    <?php endif; ?>
-  </form>
+      <?php if ($showPilotSelect): ?>
+        <label class="reservation-pilot">Pilot
+          <select name="user_id" required>
+            <?php foreach ($users as $u): ?>
+              <option value="<?= (int)$u['id'] ?>" <?= (int)$u['id'] === $selectedUserId ? 'selected' : '' ?>><?= h($u['name']) ?></option>
+            <?php endforeach; ?>
+          </select>
+        </label>
+      <?php endif; ?>
+
+      <label class="reservation-time reservation-start">Start
+        <div class="time-controls">
+          <input type="date" name="start_date" value="<?= h(date('Y-m-d', (int)$startTsForm)) ?>" required>
+          <select name="start_hour" required aria-label="Start Stunde">
+            <?php for ($h = 0; $h < 24; $h++): ?>
+              <option value="<?= $h ?>" <?= $h === (int)date('H', (int)$startTsForm) ? 'selected' : '' ?>><?= str_pad((string)$h, 2, '0', STR_PAD_LEFT) ?></option>
+            <?php endfor; ?>
+          </select>
+          <span class="time-sep">:</span>
+          <select name="start_minute" required aria-label="Start Minute">
+            <?php foreach ([0, 15, 30, 45] as $m): ?>
+              <option value="<?= $m ?>" <?= $m === (int)date('i', (int)$startTsForm) ? 'selected' : '' ?>><?= str_pad((string)$m, 2, '0', STR_PAD_LEFT) ?></option>
+            <?php endforeach; ?>
+          </select>
+        </div>
+      </label>
+      <label class="reservation-time reservation-end">Ende
+        <div class="time-controls">
+          <input type="date" name="end_date" value="<?= h(date('Y-m-d', (int)$endTsForm)) ?>" required>
+          <select name="end_hour" required aria-label="Ende Stunde">
+            <?php for ($h = 0; $h < 24; $h++): ?>
+              <option value="<?= $h ?>" <?= $h === (int)date('H', (int)$endTsForm) ? 'selected' : '' ?>><?= str_pad((string)$h, 2, '0', STR_PAD_LEFT) ?></option>
+            <?php endfor; ?>
+          </select>
+          <span class="time-sep">:</span>
+          <select name="end_minute" required aria-label="Ende Minute">
+            <?php foreach ([0, 15, 30, 45] as $m): ?>
+              <option value="<?= $m ?>" <?= $m === (int)date('i', (int)$endTsForm) ? 'selected' : '' ?>><?= str_pad((string)$m, 2, '0', STR_PAD_LEFT) ?></option>
+            <?php endforeach; ?>
+          </select>
+        </div>
+      </label>
+      <label class="reservation-notes">Notiz
+        <input name="notes" maxlength="500" value="<?= h($noteValue) ?>">
+      </label>
+      <button type="submit" class="reservation-submit <?= $isEdit ? 'btn-small' : '' ?>"><?= $isEdit ? 'Änderungen speichern' : 'Reservieren' ?></button>
+      <?php if ($isEdit): ?>
+        <a class="btn-ghost btn-small" href="index.php?page=reservations&month=<?= h($month) ?>">Bearbeitung abbrechen</a>
+      <?php endif; ?>
+    </form>
+  <?php endif; ?>
 <?php endif; ?>
 
 <?php if ($isCaptureMode): ?>

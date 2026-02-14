@@ -25,10 +25,20 @@
       <input type="email" name="email" required>
     </label>
     <label>Rolle
-      <div class="checks checks-inline role-group">
-        <label class="checkline"><input type="checkbox" name="roles[]" value="pilot" checked> Pilot</label>
-        <label class="checkline"><input type="checkbox" name="roles[]" value="accounting"> Buchhaltung</label>
-        <label class="checkline"><input type="checkbox" name="roles[]" value="admin"> Admin</label>
+      <div class="checks role-group">
+        <label class="checkline"><input type="checkbox" name="roles[]" value="pilot" checked data-pilot-toggle="create"><span>Pilot</span></label>
+        <label class="checkline"><input type="checkbox" name="roles[]" value="accounting"><span>Buchhaltung</span></label>
+        <label class="checkline"><input type="checkbox" name="roles[]" value="admin"><span>Admin</span></label>
+      </div>
+    </label>
+    <label class="pilot-groups" data-pilot-target="create">Gruppen (nur für Pilot)
+      <div class="checks role-group">
+        <?php foreach (($allGroups ?? []) as $group): ?>
+          <label class="checkline"><input type="checkbox" name="group_ids[]" value="<?= (int)$group['id'] ?>"><span><?= h((string)$group['name']) ?></span></label>
+        <?php endforeach; ?>
+        <?php if (empty($allGroups)): ?>
+          <span>Keine Gruppen vorhanden.</span>
+        <?php endif; ?>
       </div>
     </label>
     <label>Initiales Passwort
@@ -102,6 +112,7 @@ foreach ($users as $candidate) {
 
 <?php if ($openUser !== null): ?>
   <?php $deleteFormId = 'delete-user-' . (int)$openUser['id']; ?>
+  <?php $openUserGroupIds = $userGroupIdsByUser[(int)$openUser['id']] ?? []; ?>
   <h3>Benutzer bearbeiten</h3>
   <form method="post" class="user-item">
     <input type="hidden" name="_csrf" value="<?= h(csrf_token()) ?>">
@@ -130,10 +141,20 @@ foreach ($users as $candidate) {
     </div>
 
     <label>Rolle
-      <div class="checks checks-inline role-group">
-        <label class="checkline"><input type="checkbox" name="roles[]" value="pilot" <?= in_array('pilot', $openUser['roles'], true) ? 'checked' : '' ?>> Pilot</label>
-        <label class="checkline"><input type="checkbox" name="roles[]" value="accounting" <?= in_array('accounting', $openUser['roles'], true) ? 'checked' : '' ?>> Buchhaltung</label>
-        <label class="checkline"><input type="checkbox" name="roles[]" value="admin" <?= in_array('admin', $openUser['roles'], true) ? 'checked' : '' ?>> Admin</label>
+      <div class="checks role-group">
+        <label class="checkline"><input type="checkbox" name="roles[]" value="pilot" <?= in_array('pilot', $openUser['roles'], true) ? 'checked' : '' ?> data-pilot-toggle="edit"><span>Pilot</span></label>
+        <label class="checkline"><input type="checkbox" name="roles[]" value="accounting" <?= in_array('accounting', $openUser['roles'], true) ? 'checked' : '' ?>><span>Buchhaltung</span></label>
+        <label class="checkline"><input type="checkbox" name="roles[]" value="admin" <?= in_array('admin', $openUser['roles'], true) ? 'checked' : '' ?>><span>Admin</span></label>
+      </div>
+    </label>
+    <label class="pilot-groups" data-pilot-target="edit">Gruppen (nur für Pilot)
+      <div class="checks role-group">
+        <?php foreach (($allGroups ?? []) as $group): ?>
+          <label class="checkline"><input type="checkbox" name="group_ids[]" value="<?= (int)$group['id'] ?>" <?= in_array((int)$group['id'], $openUserGroupIds, true) ? 'checked' : '' ?>><span><?= h((string)$group['name']) ?></span></label>
+        <?php endforeach; ?>
+        <?php if (empty($allGroups)): ?>
+          <span>Keine Gruppen vorhanden.</span>
+        <?php endif; ?>
       </div>
     </label>
 
@@ -156,3 +177,23 @@ foreach ($users as $candidate) {
     <input type="hidden" name="user_id" value="<?= (int)$openUser['id'] ?>">
   </form>
 <?php endif; ?>
+
+<script>
+  (function () {
+    function updatePilotGroupsVisibility(mode) {
+      const toggle = document.querySelector('input[data-pilot-toggle="' + mode + '"]');
+      const target = document.querySelector('[data-pilot-target="' + mode + '"]');
+      if (!toggle || !target) return;
+      target.style.display = toggle.checked ? 'flex' : 'none';
+    }
+
+    ['create', 'edit'].forEach(function (mode) {
+      const toggle = document.querySelector('input[data-pilot-toggle="' + mode + '"]');
+      if (!toggle) return;
+      toggle.addEventListener('change', function () {
+        updatePilotGroupsVisibility(mode);
+      });
+      updatePilotGroupsVisibility(mode);
+    });
+  }());
+</script>

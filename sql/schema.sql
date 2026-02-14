@@ -27,11 +27,26 @@ CREATE TABLE aircraft (
   id INT AUTO_INCREMENT PRIMARY KEY,
   immatriculation VARCHAR(30) NOT NULL UNIQUE,
   type VARCHAR(100) NOT NULL,
+  aircraft_group_id INT NULL,
   status ENUM('active', 'disabled', 'maintenance') NOT NULL DEFAULT 'active',
   start_hobbs DECIMAL(10,2) NOT NULL DEFAULT 0.00,
   start_landings INT NOT NULL DEFAULT 1,
   base_hourly_rate DECIMAL(10,2) NOT NULL DEFAULT 0.00,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE aircraft_groups (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  name VARCHAR(100) NOT NULL UNIQUE,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE user_aircraft_groups (
+  user_id INT NOT NULL,
+  group_id INT NOT NULL,
+  PRIMARY KEY (user_id, group_id),
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  FOREIGN KEY (group_id) REFERENCES aircraft_groups(id) ON DELETE CASCADE
 );
 
 CREATE TABLE aircraft_user_rates (
@@ -111,6 +126,10 @@ CREATE TABLE invoice_items (
 ALTER TABLE reservations
   ADD CONSTRAINT fk_reservations_invoice
   FOREIGN KEY (invoice_id) REFERENCES invoices(id) ON DELETE SET NULL;
+
+ALTER TABLE aircraft
+  ADD CONSTRAINT fk_aircraft_group
+  FOREIGN KEY (aircraft_group_id) REFERENCES aircraft_groups(id) ON DELETE SET NULL;
 
 CREATE TABLE audit_logs (
   id INT AUTO_INCREMENT PRIMARY KEY,

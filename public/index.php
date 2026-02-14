@@ -143,6 +143,8 @@ switch ($page) {
         $calendarDaysCount = 7;
         $calendarAircraft = [];
         $calendarReservationsByAircraft = [];
+        $groupRestrictedPilot = is_group_restricted_pilot();
+        $allowedAircraftIds = $groupRestrictedPilot ? permitted_aircraft_ids_for_user((int)current_user()['id']) : [];
 
         if ($showReservationsModule) {
             $upcomingSql = "SELECT r.id, r.user_id, r.starts_at, r.ends_at, r.notes, a.immatriculation,
@@ -171,6 +173,10 @@ switch ($page) {
                 FROM aircraft
                 WHERE status = 'active'
                 ORDER BY immatriculation ASC")->fetchAll();
+            foreach ($calendarAircraft as &$aircraftRow) {
+                $aircraftRow['can_link'] = !$groupRestrictedPilot || in_array((int)$aircraftRow['id'], $allowedAircraftIds, true);
+            }
+            unset($aircraftRow);
 
             $calendarSql = "SELECT r.id, r.aircraft_id, r.user_id, r.starts_at, r.ends_at, r.notes,
                     CONCAT(u.first_name, ' ', u.last_name) AS pilot_name
@@ -295,6 +301,149 @@ switch ($page) {
 
         $aircraft = db()->query('SELECT * FROM aircraft ORDER BY immatriculation')->fetchAll();
         render('Flugzeuge', 'aircraft', compact('aircraft', 'openAircraftId', 'showNewAircraftForm'));
+        break;
+
+    case 'groups':
+        require_role('admin');
+        $openGroupId = (int)($_GET['open_group_id'] ?? 0);
+        $showNewGroupForm = ((int)($_GET['new'] ?? 0)) === 1;
+
+        if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+            if (!csrf_check($_POST['_csrf'] ?? null)) {
+                flash('error', 'Ungültiger Request.');
+                header('Location: index.php?page=groups');
+                exit;
+            }
+
+            $action = (string)($_POST['action'] ?? '');
+
+            if ($action === 'create') {
+                $name = trim((string)($_POST['name'] ?? ''));
+                $aircraftIds = array_values(array_unique(array_map(static fn($id): int => (int)$id, (array)($_POST['aircraft_ids'] ?? []))));
+                $aircraftIds = array_values(array_filter($aircraftIds, static fn(int $id): bool => $id > 0));
+                if ($name === '') {
+                    flash('error', 'Gruppenname ist erforderlich.');
+                    header('Location: index.php?page=groups&new=1');
+                    exit;
+                }
+
+                try {
+                    db()->beginTransaction();
+                    $stmt = db()->prepare('INSERT INTO aircraft_groups (name) VALUES (?)');
+                    $stmt->execute([$name]);
+                    $newId = (int)db()->lastInsertId();
+
+                    if ($aircraftIds !== []) {
+                        $placeholders = implode(',', array_fill(0, count($aircraftIds), '?'));
+                        $params = array_merge([$newId], $aircraftIds);
+                        db()->prepare("UPDATE aircraft SET aircraft_group_id = ? WHERE id IN ($placeholders)")->execute($params);
+                    }
+
+                    db()->commit();
+                    audit_log('create', 'aircraft_group', $newId, ['name' => $name, 'aircraft_ids' => $aircraftIds]);
+                    flash('success', 'Gruppe angelegt.');
+                    header('Location: index.php?page=groups&open_group_id=' . $newId);
+                    exit;
+                } catch (Throwable $e) {
+                    if (db()->inTransaction()) {
+                        db()->rollBack();
+                    }
+                    flash('error', 'Gruppe konnte nicht angelegt werden (Name evtl. bereits vorhanden).');
+                    header('Location: index.php?page=groups&new=1');
+                    exit;
+                }
+            }
+
+            if ($action === 'update') {
+                $groupId = (int)($_POST['group_id'] ?? 0);
+                $name = trim((string)($_POST['name'] ?? ''));
+                $aircraftIds = array_values(array_unique(array_map(static fn($id): int => (int)$id, (array)($_POST['aircraft_ids'] ?? []))));
+                $aircraftIds = array_values(array_filter($aircraftIds, static fn(int $id): bool => $id > 0));
+
+                if ($groupId <= 0 || $name === '') {
+                    flash('error', 'Ungültige Eingaben.');
+                    header('Location: index.php?page=groups&open_group_id=' . max(0, $groupId));
+                    exit;
+                }
+
+                $groupExistsStmt = db()->prepare('SELECT COUNT(*) FROM aircraft_groups WHERE id = ?');
+                $groupExistsStmt->execute([$groupId]);
+                if ((int)$groupExistsStmt->fetchColumn() === 0) {
+                    flash('error', 'Gruppe nicht gefunden.');
+                    header('Location: index.php?page=groups');
+                    exit;
+                }
+
+                try {
+                    db()->beginTransaction();
+                    db()->prepare('UPDATE aircraft_groups SET name = ? WHERE id = ?')->execute([$name, $groupId]);
+                    db()->prepare('UPDATE aircraft SET aircraft_group_id = NULL WHERE aircraft_group_id = ?')->execute([$groupId]);
+
+                    if ($aircraftIds !== []) {
+                        $placeholders = implode(',', array_fill(0, count($aircraftIds), '?'));
+                        $params = array_merge([$groupId], $aircraftIds);
+                        db()->prepare("UPDATE aircraft SET aircraft_group_id = ? WHERE id IN ($placeholders)")->execute($params);
+                    }
+
+                    db()->commit();
+                    audit_log('update', 'aircraft_group', $groupId, ['name' => $name, 'aircraft_ids' => $aircraftIds]);
+                    flash('success', 'Gruppe aktualisiert.');
+                } catch (Throwable $e) {
+                    if (db()->inTransaction()) {
+                        db()->rollBack();
+                    }
+                    flash('error', 'Gruppe konnte nicht aktualisiert werden.');
+                }
+
+                header('Location: index.php?page=groups&open_group_id=' . $groupId);
+                exit;
+            }
+
+            if ($action === 'delete') {
+                $groupId = (int)($_POST['group_id'] ?? 0);
+                if ($groupId <= 0) {
+                    flash('error', 'Ungültige Gruppe.');
+                    header('Location: index.php?page=groups');
+                    exit;
+                }
+
+                $usageStmt = db()->prepare('SELECT COUNT(*) FROM aircraft WHERE aircraft_group_id = ?');
+                $usageStmt->execute([$groupId]);
+                if ((int)$usageStmt->fetchColumn() > 0) {
+                    flash('error', 'Gruppe kann nicht gelöscht werden, solange Flugzeuge zugeordnet sind.');
+                    header('Location: index.php?page=groups&open_group_id=' . $groupId);
+                    exit;
+                }
+
+                try {
+                    db()->beginTransaction();
+                    db()->prepare('DELETE FROM user_aircraft_groups WHERE group_id = ?')->execute([$groupId]);
+                    db()->prepare('DELETE FROM aircraft_groups WHERE id = ?')->execute([$groupId]);
+                    db()->commit();
+                    audit_log('delete', 'aircraft_group', $groupId);
+                    flash('success', 'Gruppe gelöscht.');
+                } catch (Throwable $e) {
+                    if (db()->inTransaction()) {
+                        db()->rollBack();
+                    }
+                    flash('error', 'Gruppe konnte nicht gelöscht werden.');
+                }
+
+                header('Location: index.php?page=groups');
+                exit;
+            }
+        }
+
+        $groups = db()->query("SELECT g.id, g.name, COUNT(a.id) AS aircraft_count
+            FROM aircraft_groups g
+            LEFT JOIN aircraft a ON a.aircraft_group_id = g.id
+            GROUP BY g.id, g.name
+            ORDER BY g.name")->fetchAll();
+        $aircraft = db()->query("SELECT id, immatriculation, type, aircraft_group_id, status
+            FROM aircraft
+            ORDER BY immatriculation")->fetchAll();
+
+        render('Gruppen', 'groups', compact('groups', 'aircraft', 'openGroupId', 'showNewGroupForm'));
         break;
 
     case 'aircraft_flights':
@@ -471,6 +620,8 @@ switch ($page) {
         $openUserId = (int)($_GET['open_user_id'] ?? 0);
         $showNewUserForm = ((int)($_GET['new'] ?? 0)) === 1;
         $usersPageUrl = 'index.php?page=users' . ($userSearch !== '' ? '&q=' . urlencode($userSearch) : '');
+        $allGroups = db()->query('SELECT id, name FROM aircraft_groups ORDER BY name')->fetchAll();
+        $validGroupIds = array_map(static fn(array $row): int => (int)$row['id'], $allGroups);
 
         if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (!csrf_check($_POST['_csrf'] ?? null)) {
@@ -486,6 +637,8 @@ switch ($page) {
                 $lastName = trim((string)($_POST['last_name'] ?? ''));
                 $email = trim((string)($_POST['email'] ?? ''));
                 $roles = array_values(array_filter((array)($_POST['roles'] ?? [])));
+                $groupIds = array_values(array_unique(array_map(static fn($id): int => (int)$id, (array)($_POST['group_ids'] ?? []))));
+                $groupIds = array_values(array_intersect($validGroupIds, $groupIds));
                 $password = (string)($_POST['password'] ?? '');
 
                 $validRoles = ['admin', 'pilot', 'accounting'];
@@ -507,9 +660,16 @@ switch ($page) {
                     foreach ($roles as $role) {
                         $roleInsert->execute([$newId, $role]);
                     }
+                    db()->prepare('DELETE FROM user_aircraft_groups WHERE user_id = ?')->execute([$newId]);
+                    if (in_array('pilot', $roles, true) && $groupIds !== []) {
+                        $groupInsert = db()->prepare('INSERT INTO user_aircraft_groups (user_id, group_id) VALUES (?, ?)');
+                        foreach ($groupIds as $groupId) {
+                            $groupInsert->execute([$newId, $groupId]);
+                        }
+                    }
                     db()->commit();
 
-                    audit_log('create', 'user', $newId, ['email' => $email, 'roles' => $roles]);
+                    audit_log('create', 'user', $newId, ['email' => $email, 'roles' => $roles, 'group_ids' => $groupIds]);
                     flash('success', 'Benutzer angelegt.');
                 } catch (Throwable $e) {
                     if (db()->inTransaction()) {
@@ -525,6 +685,8 @@ switch ($page) {
                 $lastName = trim((string)($_POST['last_name'] ?? ''));
                 $email = trim((string)($_POST['email'] ?? ''));
                 $roles = array_values(array_filter((array)($_POST['roles'] ?? [])));
+                $groupIds = array_values(array_unique(array_map(static fn($id): int => (int)$id, (array)($_POST['group_ids'] ?? []))));
+                $groupIds = array_values(array_intersect($validGroupIds, $groupIds));
                 $isActive = ((string)($_POST['is_active'] ?? '1')) === '1' ? 1 : 0;
                 $newPassword = (string)($_POST['new_password'] ?? '');
                 $validRoles = ['admin', 'pilot', 'accounting'];
@@ -553,6 +715,14 @@ switch ($page) {
                         $roleInsert->execute([$userId, $role]);
                     }
 
+                    db()->prepare('DELETE FROM user_aircraft_groups WHERE user_id = ?')->execute([$userId]);
+                    if (in_array('pilot', $roles, true) && $groupIds !== []) {
+                        $groupInsert = db()->prepare('INSERT INTO user_aircraft_groups (user_id, group_id) VALUES (?, ?)');
+                        foreach ($groupIds as $groupId) {
+                            $groupInsert->execute([$userId, $groupId]);
+                        }
+                    }
+
                     if ($newPassword !== '') {
                         if (strlen($newPassword) < 8) {
                             db()->rollBack();
@@ -570,7 +740,7 @@ switch ($page) {
                         $_SESSION['user']['email'] = $email;
                         $_SESSION['user']['roles'] = user_roles($userId);
                     }
-                    audit_log('update', 'user', $userId, ['email' => $email, 'roles' => $roles, 'is_active' => $isActive]);
+                    audit_log('update', 'user', $userId, ['email' => $email, 'roles' => $roles, 'is_active' => $isActive, 'group_ids' => $groupIds]);
                     flash('success', 'Benutzer aktualisiert.');
                 } catch (Throwable $e) {
                     if (db()->inTransaction()) {
@@ -625,6 +795,7 @@ switch ($page) {
                     }
 
                     db()->prepare('DELETE FROM aircraft_user_rates WHERE user_id = ?')->execute([$userId]);
+                    db()->prepare('DELETE FROM user_aircraft_groups WHERE user_id = ?')->execute([$userId]);
                     db()->prepare('DELETE FROM user_roles WHERE user_id = ?')->execute([$userId]);
                     db()->prepare('DELETE FROM audit_logs WHERE actor_user_id = ?')->execute([$userId]);
                     db()->prepare('DELETE FROM users WHERE id = ?')->execute([$userId]);
@@ -666,7 +837,19 @@ switch ($page) {
             $u['roles'] = $u['roles_csv'] ? explode(',', $u['roles_csv']) : [];
         }
         unset($u);
-        render('Benutzer', 'users', compact('users', 'userSearch', 'openUserId', 'showNewUserForm'));
+
+        $userGroupRows = db()->query('SELECT user_id, group_id FROM user_aircraft_groups')->fetchAll();
+        $userGroupIdsByUser = [];
+        foreach ($userGroupRows as $row) {
+            $uid = (int)$row['user_id'];
+            $gid = (int)$row['group_id'];
+            if (!isset($userGroupIdsByUser[$uid])) {
+                $userGroupIdsByUser[$uid] = [];
+            }
+            $userGroupIdsByUser[$uid][] = $gid;
+        }
+
+        render('Benutzer', 'users', compact('users', 'userSearch', 'openUserId', 'showNewUserForm', 'allGroups', 'userGroupIdsByUser'));
         break;
 
     case 'rates':
@@ -754,6 +937,12 @@ switch ($page) {
         $canCompleteReservation = static function (int $ownerId): bool {
             return has_role('admin') || (can('reservation.complete.own') && $ownerId === (int)current_user()['id']);
         };
+        $groupRestrictedPilot = is_group_restricted_pilot();
+        $currentUserId = (int)current_user()['id'];
+        $permittedAircraftIds = $groupRestrictedPilot ? permitted_aircraft_ids_for_user($currentUserId) : [];
+        $isAircraftPermittedForCurrentUser = static function (int $aircraftId) use ($groupRestrictedPilot, $permittedAircraftIds): bool {
+            return !$groupRestrictedPilot || in_array($aircraftId, $permittedAircraftIds, true);
+        };
         $overlapStmt = db()->prepare("SELECT COUNT(*) FROM reservations
             WHERE aircraft_id = ?
               AND status <> 'cancelled'
@@ -810,6 +999,12 @@ switch ($page) {
 
                 if ($startTs <= time() || $endTs <= time()) {
                     flash('error', 'Reservierungen sind nur in der Zukunft erlaubt.');
+                    header('Location: index.php?page=reservations&month=' . urlencode($month));
+                    exit;
+                }
+
+                if (!$isAircraftPermittedForCurrentUser($aircraftId)) {
+                    flash('error', 'Dieses Flugzeug ist für Sie nicht reservierbar.');
                     header('Location: index.php?page=reservations&month=' . urlencode($month));
                     exit;
                 }
@@ -884,6 +1079,12 @@ switch ($page) {
 
                 if ($startTs <= time() || $endTs <= time()) {
                     flash('error', 'Reservierungen sind nur in der Zukunft erlaubt.');
+                    header('Location: index.php?page=reservations&month=' . urlencode($month) . '&edit_id=' . $reservationId);
+                    exit;
+                }
+
+                if (!$isAircraftPermittedForCurrentUser($aircraftId)) {
+                    flash('error', 'Dieses Flugzeug ist für Sie nicht reservierbar.');
                     header('Location: index.php?page=reservations&month=' . urlencode($month) . '&edit_id=' . $reservationId);
                     exit;
                 }
@@ -1146,7 +1347,23 @@ switch ($page) {
             exit;
         }
 
-        $aircraft = db()->query("SELECT id, immatriculation, type, status, start_hobbs, start_landings FROM aircraft WHERE status = 'active' ORDER BY immatriculation")->fetchAll();
+        if ($groupRestrictedPilot) {
+            $aircraftStmt = db()->prepare("SELECT a.id, a.immatriculation, a.type, a.status, a.start_hobbs, a.start_landings
+                FROM aircraft a
+                JOIN user_aircraft_groups uag ON uag.group_id = a.aircraft_group_id
+                WHERE uag.user_id = ?
+                  AND a.status = 'active'
+                  AND a.aircraft_group_id IS NOT NULL
+                GROUP BY a.id, a.immatriculation, a.type, a.status, a.start_hobbs, a.start_landings
+                ORDER BY a.immatriculation");
+            $aircraftStmt->execute([$currentUserId]);
+            $aircraft = $aircraftStmt->fetchAll();
+        } else {
+            $aircraft = db()->query("SELECT id, immatriculation, type, status, start_hobbs, start_landings FROM aircraft WHERE status = 'active' ORDER BY immatriculation")->fetchAll();
+        }
+        if ($prefillAircraftId > 0 && !$isAircraftPermittedForCurrentUser($prefillAircraftId)) {
+            $prefillAircraftId = 0;
+        }
         $users = db()->query("SELECT u.id, CONCAT(u.first_name, ' ', u.last_name) AS name
             FROM users u
             WHERE u.is_active = 1
@@ -1168,6 +1385,17 @@ switch ($page) {
         if (has_role('pilot') && !has_role('admin') && !has_role('accounting')) {
             $sql .= ' AND r.user_id = ?';
             $params[] = (int)current_user()['id'];
+        }
+        if ($groupRestrictedPilot) {
+            if ($permittedAircraftIds === []) {
+                $sql .= ' AND 1 = 0';
+            } else {
+                $placeholders = implode(',', array_fill(0, count($permittedAircraftIds), '?'));
+                $sql .= " AND r.aircraft_id IN ($placeholders)";
+                foreach ($permittedAircraftIds as $id) {
+                    $params[] = $id;
+                }
+            }
         }
 
         $sql .= ' ORDER BY r.starts_at';

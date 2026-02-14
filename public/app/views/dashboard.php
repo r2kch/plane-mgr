@@ -59,6 +59,7 @@
     <?php foreach (($calendarAircraft ?? []) as $aircraftRow): ?>
       <?php
         $aircraftId = (int)$aircraftRow['id'];
+        $canLink = (bool)($aircraftRow['can_link'] ?? true);
         $aircraftBookings = $calendarReservationsByAircraft[$aircraftId] ?? [];
         $aircraftLink = sprintf(
             'index.php?page=reservations&month=%s&prefill_aircraft_id=%d&prefill_start_date=%s',
@@ -69,7 +70,11 @@
       ?>
       <div class="timeline-row">
         <div class="timeline-left">
-          <a href="<?= h($aircraftLink) ?>"><?= h((string)$aircraftRow['immatriculation']) ?></a>
+          <?php if ($canLink): ?>
+            <a href="<?= h($aircraftLink) ?>"><?= h((string)$aircraftRow['immatriculation']) ?></a>
+          <?php else: ?>
+            <span class="timeline-label-disabled"><?= h((string)$aircraftRow['immatriculation']) ?></span>
+          <?php endif; ?>
         </div>
         <div class="timeline-lane">
           <div class="timeline-day-links">
@@ -82,7 +87,11 @@
                     urlencode((string)$day['date'])
                 );
               ?>
-              <a class="timeline-day-link" href="<?= h($dayTarget) ?>" aria-label="Reservierung für <?= h((string)$aircraftRow['immatriculation']) ?> am <?= h((string)$day['label']) ?>"></a>
+              <?php if ($canLink): ?>
+                <a class="timeline-day-link" href="<?= h($dayTarget) ?>" aria-label="Reservierung für <?= h((string)$aircraftRow['immatriculation']) ?> am <?= h((string)$day['label']) ?>"></a>
+              <?php else: ?>
+                <span class="timeline-day-link timeline-day-link-disabled" aria-hidden="true"></span>
+              <?php endif; ?>
             <?php endforeach; ?>
           </div>
           <?php foreach ($aircraftBookings as $booking): ?>
