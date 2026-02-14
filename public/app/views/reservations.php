@@ -89,14 +89,14 @@
   <h3>Flug erfassen</h3>
   <?php if (!empty($completeLastReservationFlight)): ?>
     <?php
-      $lastHobsFrom = (float)$completeLastReservationFlight['hobbs_start'];
-      $lastHobsTo = (float)$completeLastReservationFlight['hobbs_end'];
-      $lastHobsFromHours = (int)floor($lastHobsFrom);
-      $lastHobsFromMinutes = (int)round(($lastHobsFrom - $lastHobsFromHours) * 60);
-      if ($lastHobsFromMinutes === 60) { $lastHobsFromHours++; $lastHobsFromMinutes = 0; }
-      $lastHobsToHours = (int)floor($lastHobsTo);
-      $lastHobsToMinutes = (int)round(($lastHobsTo - $lastHobsToHours) * 60);
-      if ($lastHobsToMinutes === 60) { $lastHobsToHours++; $lastHobsToMinutes = 0; }
+      $lastHobbsFrom = (float)$completeLastReservationFlight['hobbs_start'];
+      $lastHobbsTo = (float)$completeLastReservationFlight['hobbs_end'];
+      $lastHobbsFromHours = (int)floor($lastHobbsFrom);
+      $lastHobbsFromMinutes = (int)round(($lastHobbsFrom - $lastHobbsFromHours) * 60);
+      if ($lastHobbsFromMinutes === 60) { $lastHobbsFromHours++; $lastHobbsFromMinutes = 0; }
+      $lastHobbsToHours = (int)floor($lastHobbsTo);
+      $lastHobbsToMinutes = (int)round(($lastHobbsTo - $lastHobbsToHours) * 60);
+      if ($lastHobbsToMinutes === 60) { $lastHobbsToHours++; $lastHobbsToMinutes = 0; }
     ?>
     <div class="flash flash-success">
       Letzter Flug in dieser Reservierung:
@@ -106,7 +106,7 @@
       <?= h((string)$completeLastReservationFlight['pilot_name']) ?>,
       <?= h((string)$completeLastReservationFlight['from_airfield']) ?> → <?= h((string)$completeLastReservationFlight['to_airfield']) ?>,
       Landungen <?= (int)($completeLastReservationFlight['landings_count'] ?? 1) ?>,
-      Hobs <?= h(sprintf('%d:%02d', $lastHobsFromHours, $lastHobsFromMinutes)) ?> → <?= h(sprintf('%d:%02d', $lastHobsToHours, $lastHobsToMinutes)) ?>
+      Hobbs <?= h(sprintf('%d:%02d', $lastHobbsFromHours, $lastHobbsFromMinutes)) ?> → <?= h(sprintf('%d:%02d', $lastHobbsToHours, $lastHobbsToMinutes)) ?>
     </div>
   <?php endif; ?>
   <form method="post" class="capture-form">
@@ -144,16 +144,16 @@
 
           <div class="flight-row flight-row-2">
             <label>Anzahl Landungen
-              <input type="number" name="flight_landings_count[]" min="1" step="1" value="1" required>
+              <input type="number" name="flight_landings_count[]" min="1" step="1" value="<?= (int)($completeDefaultLandings ?? 1) ?>" required>
             </label>
             <div></div>
           </div>
 
           <div class="flight-row flight-row-2">
-            <label>Hobs von
-              <input name="flight_hobbs_start[]" placeholder="z.B. 93:12" pattern="^[0-9]+:[0-5][0-9]$" value="<?= h($completeDefaultHobsStart ?? '') ?>" required>
+            <label>Hobbs von
+              <input name="flight_hobbs_start[]" placeholder="z.B. 93:12" pattern="^[0-9]+:[0-5][0-9]$" value="<?= h($completeDefaultHobbsStart ?? '') ?>" required>
             </label>
-            <label>Hobs bis
+            <label>Hobbs bis
               <input name="flight_hobbs_end[]" placeholder="z.B. 94:01" pattern="^[0-9]+:[0-5][0-9]$" required>
             </label>
           </div>
@@ -171,14 +171,14 @@
 
   <script>
     (function () {
-      function parseHobsToMinutes(value) {
+      function parseHobbsToMinutes(value) {
         const text = String(value || '').trim();
         const match = text.match(/^(\d+):([0-5]\d)$/);
         if (!match) return null;
         return (parseInt(match[1], 10) * 60) + parseInt(match[2], 10);
       }
 
-      function formatMinutesToHobs(totalMinutes) {
+      function formatMinutesToHobbs(totalMinutes) {
         if (!Number.isFinite(totalMinutes) || totalMinutes < 0) return '';
         const rounded = Math.round(totalMinutes);
         const hours = Math.floor(rounded / 60);
@@ -186,7 +186,7 @@
         return `${hours}:${String(minutes).padStart(2, '0')}`;
       }
 
-      function autoFillHobsEnd(card) {
+      function autoFillHobbsEnd(card) {
         if (!card) return;
         const startTimeInput = card.querySelector('input[name="flight_start_time[]"]');
         const landingTimeInput = card.querySelector('input[name="flight_landing_time[]"]');
@@ -196,20 +196,20 @@
 
         const startDate = startTimeInput.value ? new Date(startTimeInput.value) : null;
         const landingDate = landingTimeInput.value ? new Date(landingTimeInput.value) : null;
-        const hobsStartMinutes = parseHobsToMinutes(hobsStartInput.value);
+        const hobsStartMinutes = parseHobbsToMinutes(hobsStartInput.value);
         if (!startDate || !landingDate || Number.isNaN(startDate.getTime()) || Number.isNaN(landingDate.getTime()) || hobsStartMinutes === null) return;
 
         const diffMinutes = Math.round((landingDate.getTime() - startDate.getTime()) / 60000);
         if (diffMinutes <= 0) return;
 
-        hobsEndInput.value = formatMinutesToHobs(hobsStartMinutes + diffMinutes);
+        hobsEndInput.value = formatMinutesToHobbs(hobsStartMinutes + diffMinutes);
       }
 
       function bindAutoFill(card) {
         const fields = card.querySelectorAll('input[name="flight_start_time[]"], input[name="flight_landing_time[]"], input[name="flight_hobbs_start[]"]');
         fields.forEach((field) => {
-          field.addEventListener('change', () => autoFillHobsEnd(card));
-          field.addEventListener('blur', () => autoFillHobsEnd(card));
+          field.addEventListener('change', () => autoFillHobbsEnd(card));
+          field.addEventListener('blur', () => autoFillHobbsEnd(card));
         });
       }
 

@@ -50,6 +50,8 @@ function db(): PDO
     ]);
 
     // Backward-compatible schema update for existing local databases.
+    $pdo->exec('ALTER TABLE aircraft ADD COLUMN IF NOT EXISTS start_hobbs DECIMAL(10,2) NOT NULL DEFAULT 0.00 AFTER status');
+    $pdo->exec('ALTER TABLE aircraft ADD COLUMN IF NOT EXISTS start_landings INT NOT NULL DEFAULT 1 AFTER start_hobbs');
     $pdo->exec('ALTER TABLE reservation_flights ADD COLUMN IF NOT EXISTS landings_count INT NOT NULL DEFAULT 1 AFTER landing_time');
 
     return $pdo;

@@ -20,15 +20,47 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         exit;
     }
 
+    $doReservations = isset($_POST['cleanup_reservations']);
+    $doFlights = isset($_POST['cleanup_flights']);
+    $doInvoices = isset($_POST['cleanup_invoices']);
+
+    if (!$doReservations && !$doFlights && !$doInvoices) {
+        flash('error', 'Bitte mindestens eine Cleanup-Option auswählen.');
+        header('Location: cleanup.php');
+        exit;
+    }
+
     db()->beginTransaction();
     try {
-        $pdfPaths = db()->query('SELECT pdf_path FROM invoices WHERE pdf_path IS NOT NULL AND pdf_path <> ""')->fetchAll();
+        $pdfPaths = [];
+        $executed = [];
 
-        db()->exec('DELETE FROM invoice_items');
-        db()->exec('UPDATE reservations SET invoice_id = NULL WHERE invoice_id IS NOT NULL');
-        db()->exec('DELETE FROM invoices');
+        if ($doInvoices) {
+            $pdfPaths = db()->query('SELECT pdf_path FROM invoices WHERE pdf_path IS NOT NULL AND pdf_path <> ""')->fetchAll();
+            db()->exec('DELETE FROM invoice_items');
+            db()->exec('UPDATE reservations SET invoice_id = NULL WHERE invoice_id IS NOT NULL');
+            db()->exec('DELETE FROM invoices');
+            $executed[] = 'rechnungen';
+        }
 
-        audit_log('cleanup', 'debug', null, ['target' => 'invoice_reset_keep_reservations']);
+        if ($doReservations) {
+            // FK invoice_items.reservation_id -> reservations.id muss vor dem Löschen aufgelöst werden.
+            db()->exec('DELETE ii FROM invoice_items ii JOIN reservations r ON r.id = ii.reservation_id');
+            db()->exec('DELETE FROM reservation_flights');
+            db()->exec('DELETE FROM reservations');
+            $executed[] = 'reservierungen';
+            $executed[] = 'fluege';
+        } elseif ($doFlights) {
+            db()->exec('DELETE FROM reservation_flights');
+            db()->exec('UPDATE reservations SET hours = 0');
+            $executed[] = 'fluege';
+        }
+
+        audit_log('cleanup', 'debug', null, [
+            'reservations' => $doReservations,
+            'flights' => $doFlights,
+            'invoices' => $doInvoices,
+        ]);
         db()->commit();
 
         foreach ($pdfPaths as $row) {
@@ -53,8 +85,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         }
 
-        flash('success', 'Rechnungen wurden gelöscht und Reservierungen auf nicht verrechnet zurückgesetzt.');
-        header('Location: index.php?page=reservations');
+        $executed = array_values(array_unique($executed));
+        flash('success', 'Cleanup abgeschlossen: ' . implode(', ', $executed) . '.');
+        header('Location: cleanup.php');
         exit;
     } catch (Throwable $e) {
         if (db()->inTransaction()) {
@@ -81,7 +114,7 @@ $flashes = pull_flashes();
   <div class="app-shell">
     <main class="panel" style="max-width:760px; margin:32px auto;">
       <h2>Debug Cleanup</h2>
-      <p>Diese Aktion löscht <strong>alle Rechnungen und Rechnungspositionen</strong> und setzt Reservierungen auf <strong>nicht verrechnet</strong> zurück.</p>
+      <p>Diese Aktion ist nur für Debug. Es werden nur die Bereiche ausgeführt, die angehakt sind.</p>
 
       <?php foreach ($flashes as $flash): ?>
         <div class="flash flash-<?= h($flash['type']) ?>"><?= h($flash['message']) ?></div>
@@ -89,6 +122,11 @@ $flashes = pull_flashes();
 
       <form method="post" class="grid-form narrow">
         <input type="hidden" name="_csrf" value="<?= h(csrf_token()) ?>">
+        <label class="checks-inline">
+          <span class="checkline"><input type="checkbox" name="cleanup_reservations" value="1"> Alle Reservierungen löschen</span>
+          <span class="checkline"><input type="checkbox" name="cleanup_flights" value="1"> Alle Flüge löschen</span>
+          <span class="checkline"><input type="checkbox" name="cleanup_invoices" value="1"> Alle Rechnungen löschen</span>
+        </label>
         <label>Bestätigung (YES eingeben)
           <input name="confirm" required>
         </label>

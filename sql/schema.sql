@@ -28,6 +28,8 @@ CREATE TABLE aircraft (
   immatriculation VARCHAR(30) NOT NULL UNIQUE,
   type VARCHAR(100) NOT NULL,
   status ENUM('active', 'disabled', 'maintenance') NOT NULL DEFAULT 'active',
+  start_hobbs DECIMAL(10,2) NOT NULL DEFAULT 0.00,
+  start_landings INT NOT NULL DEFAULT 1,
   base_hourly_rate DECIMAL(10,2) NOT NULL DEFAULT 0.00,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );

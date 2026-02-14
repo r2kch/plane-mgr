@@ -206,6 +206,14 @@ switch ($page) {
 
     case 'aircraft':
         require_role('admin');
+        $parseHobbsClock = static function (string $value): ?float {
+            $trimmed = trim($value);
+            if (!preg_match('/^\d+:[0-5]\d$/', $trimmed)) {
+                return null;
+            }
+            [$hours, $minutes] = explode(':', $trimmed, 2);
+            return ((int)$hours) + (((int)$minutes) / 60);
+        };
 
         if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (!csrf_check($_POST['_csrf'] ?? null)) {
@@ -218,16 +226,25 @@ switch ($page) {
             $imm = trim((string)($_POST['immatriculation'] ?? ''));
             $type = trim((string)($_POST['type'] ?? ''));
             $status = (string)($_POST['status'] ?? 'active');
+            $startHobbsRaw = trim((string)($_POST['start_hobbs'] ?? '0:00'));
+            $startHobbs = $parseHobbsClock($startHobbsRaw);
+            $startLandings = (int)($_POST['start_landings'] ?? 1);
             $rate = (float)($_POST['base_hourly_rate'] ?? 0);
 
+            if ($startHobbs === null || $startLandings < 1) {
+                flash('error', 'Start HOBBS muss im Format HH:MM sein und Start Landing min. 1.');
+                header('Location: index.php?page=aircraft');
+                exit;
+            }
+
             if ($id > 0) {
-                $stmt = db()->prepare('UPDATE aircraft SET immatriculation = ?, type = ?, status = ?, base_hourly_rate = ? WHERE id = ?');
-                $stmt->execute([$imm, $type, $status, $rate, $id]);
+                $stmt = db()->prepare('UPDATE aircraft SET immatriculation = ?, type = ?, status = ?, start_hobbs = ?, start_landings = ?, base_hourly_rate = ? WHERE id = ?');
+                $stmt->execute([$imm, $type, $status, $startHobbs, $startLandings, $rate, $id]);
                 audit_log('update', 'aircraft', $id, ['immatriculation' => $imm]);
                 flash('success', 'Flugzeug aktualisiert.');
             } else {
-                $stmt = db()->prepare('INSERT INTO aircraft (immatriculation, type, status, base_hourly_rate) VALUES (?, ?, ?, ?)');
-                $stmt->execute([$imm, $type, $status, $rate]);
+                $stmt = db()->prepare('INSERT INTO aircraft (immatriculation, type, status, start_hobbs, start_landings, base_hourly_rate) VALUES (?, ?, ?, ?, ?, ?)');
+                $stmt->execute([$imm, $type, $status, $startHobbs, $startLandings, $rate]);
                 $newId = (int)db()->lastInsertId();
                 audit_log('create', 'aircraft', $newId, ['immatriculation' => $imm]);
                 flash('success', 'Flugzeug angelegt.');
@@ -257,7 +274,7 @@ switch ($page) {
             exit('Flugzeug nicht gefunden.');
         }
 
-        $parseHobsClock = static function (string $value): ?float {
+        $parseHobbsClock = static function (string $value): ?float {
             $trimmed = trim($value);
             if (!preg_match('/^\d+:[0-5]\d$/', $trimmed)) {
                 return null;
@@ -267,7 +284,7 @@ switch ($page) {
             return ((int)$hours) + (((int)$minutes) / 60);
         };
 
-        $formatHobsClock = static function (float $value): string {
+        $formatHobbsClock = static function (float $value): string {
             $hours = (int)floor($value);
             $minutes = (int)round(($value - $hours) * 60);
             if ($minutes === 60) {
@@ -342,15 +359,15 @@ switch ($page) {
                     exit;
                 }
 
-                $hobbsStart = $parseHobsClock($hobbsStartRaw);
-                $hobbsEnd = $parseHobsClock($hobbsEndRaw);
+                $hobbsStart = $parseHobbsClock($hobbsStartRaw);
+                $hobbsEnd = $parseHobbsClock($hobbsEndRaw);
                 if ($hobbsStart === null || $hobbsEnd === null) {
-                    flash('error', 'Hobs muss im Format HH:MM sein.');
+                    flash('error', 'Hobbs muss im Format HH:MM sein.');
                     header('Location: index.php?page=aircraft_flights&aircraft_id=' . $aircraftId . '&edit_id=' . $flightId);
                     exit;
                 }
                 if ($hobbsEnd <= $hobbsStart) {
-                    flash('error', 'Hobs bis muss größer als Hobs von sein.');
+                    flash('error', 'Hobbs bis muss größer als Hobbs von sein.');
                     header('Location: index.php?page=aircraft_flights&aircraft_id=' . $aircraftId . '&edit_id=' . $flightId);
                     exit;
                 }
@@ -390,8 +407,8 @@ switch ($page) {
         $flightsStmt->execute([$aircraftId]);
         $flights = $flightsStmt->fetchAll();
         foreach ($flights as &$flight) {
-            $flight['hobbs_start_clock'] = $formatHobsClock((float)$flight['hobbs_start']);
-            $flight['hobbs_end_clock'] = $formatHobsClock((float)$flight['hobbs_end']);
+            $flight['hobbs_start_clock'] = $formatHobbsClock((float)$flight['hobbs_start']);
+            $flight['hobbs_end_clock'] = $formatHobbsClock((float)$flight['hobbs_end']);
         }
         unset($flight);
 
@@ -990,13 +1007,13 @@ switch ($page) {
                     $hobbsStartVal = $parseHobbs($hobbsStart);
                     $hobbsEndVal = $parseHobbs($hobbsEnd);
                     if ($hobbsStartVal === null || $hobbsEndVal === null) {
-                        flash('error', 'Hobs muss im Format HH:MM sein (Zeile ' . ($i + 1) . ').');
+                        flash('error', 'Hobbs muss im Format HH:MM sein (Zeile ' . ($i + 1) . ').');
                         header('Location: index.php?page=reservations&month=' . urlencode($month) . '&complete_id=' . $reservationId);
                         exit;
                     }
 
                     if ($hobbsEndVal <= $hobbsStartVal) {
-                        flash('error', 'Hobs bis muss groesser als Hobs von sein (Zeile ' . ($i + 1) . ').');
+                        flash('error', 'Hobbs bis muss groesser als Hobbs von sein (Zeile ' . ($i + 1) . ').');
                         header('Location: index.php?page=reservations&month=' . urlencode($month) . '&complete_id=' . $reservationId);
                         exit;
                     }
@@ -1088,7 +1105,7 @@ switch ($page) {
             exit;
         }
 
-        $aircraft = db()->query("SELECT id, immatriculation, type, status FROM aircraft WHERE status = 'active' ORDER BY immatriculation")->fetchAll();
+        $aircraft = db()->query("SELECT id, immatriculation, type, status, start_hobbs, start_landings FROM aircraft WHERE status = 'active' ORDER BY immatriculation")->fetchAll();
         $users = db()->query("SELECT u.id, CONCAT(u.first_name, ' ', u.last_name) AS name
             FROM users u
             WHERE u.is_active = 1
@@ -1099,7 +1116,7 @@ switch ($page) {
               )
             ORDER BY u.last_name")->fetchAll();
 
-        $sql = 'SELECT r.*, a.immatriculation, CONCAT(u.first_name, " ", u.last_name) AS pilot_name
+        $sql = 'SELECT r.*, a.immatriculation, a.start_hobbs, a.start_landings, CONCAT(u.first_name, " ", u.last_name) AS pilot_name
                 FROM reservations r
                 JOIN aircraft a ON a.id = r.aircraft_id
                 JOIN users u ON u.id = r.user_id
@@ -1132,7 +1149,8 @@ switch ($page) {
         }
 
         $completeReservation = null;
-        $completeDefaultHobsStart = '';
+        $completeDefaultHobbsStart = '';
+        $completeDefaultLandings = 1;
         $completeDefaultFromAirfield = '';
         $completeLastReservationFlight = null;
         $completeId = (int)($_GET['complete_id'] ?? 0);
@@ -1164,15 +1182,25 @@ switch ($page) {
                         }
 
                         if ($lastFlight) {
-                            $lastHobsEnd = (float)$lastFlight['hobbs_end'];
-                            $hours = (int)floor($lastHobsEnd);
-                            $minutes = (int)round(($lastHobsEnd - $hours) * 60);
+                            $lastHobbsEnd = (float)$lastFlight['hobbs_end'];
+                            $hours = (int)floor($lastHobbsEnd);
+                            $minutes = (int)round(($lastHobbsEnd - $hours) * 60);
                             if ($minutes === 60) {
                                 $hours++;
                                 $minutes = 0;
                             }
-                            $completeDefaultHobsStart = sprintf('%d:%02d', $hours, $minutes);
+                            $completeDefaultHobbsStart = sprintf('%d:%02d', $hours, $minutes);
                             $completeDefaultFromAirfield = strtoupper((string)($lastFlight['to_airfield'] ?? ''));
+                        } else {
+                            $startHobbs = (float)($row['start_hobbs'] ?? 0);
+                            $hours = (int)floor($startHobbs);
+                            $minutes = (int)round(($startHobbs - $hours) * 60);
+                            if ($minutes === 60) {
+                                $hours++;
+                                $minutes = 0;
+                            }
+                            $completeDefaultHobbsStart = sprintf('%d:%02d', $hours, $minutes);
+                            $completeDefaultLandings = max(1, (int)($row['start_landings'] ?? 1));
                         }
                     }
                     break;
@@ -1187,7 +1215,8 @@ switch ($page) {
             'month',
             'editReservation',
             'completeReservation',
-            'completeDefaultHobsStart',
+            'completeDefaultHobbsStart',
+            'completeDefaultLandings',
             'completeDefaultFromAirfield',
             'completeLastReservationFlight',
             'prefillAircraftId',
@@ -1546,12 +1575,12 @@ switch ($page) {
             }
 
             if ($hobbsStart === null || $hobbsEnd === null) {
-                flash('error', 'Hobs muss im Format HH:MM sein.');
+                flash('error', 'Hobbs muss im Format HH:MM sein.');
                 header('Location: index.php?page=manual_flight');
                 exit;
             }
             if ($hobbsEnd <= $hobbsStart) {
-                flash('error', 'Hobs bis muss größer als Hobs von sein.');
+                flash('error', 'Hobbs bis muss größer als Hobbs von sein.');
                 header('Location: index.php?page=manual_flight');
                 exit;
             }
@@ -1616,7 +1645,7 @@ switch ($page) {
               )
             ORDER BY u.last_name, u.first_name")->fetchAll();
 
-        $aircraft = db()->query("SELECT id, immatriculation, type
+        $aircraft = db()->query("SELECT id, immatriculation, type, start_hobbs, start_landings
             FROM aircraft
             WHERE status = 'active'
             ORDER BY immatriculation")->fetchAll();
@@ -1635,21 +1664,32 @@ switch ($page) {
 
             $hobbsClock = '';
             $fromAirfield = '';
+            $startLandings = max(1, (int)($aircraftRow['start_landings'] ?? 1));
             if ($lastFlight) {
-                $lastHobsEnd = (float)$lastFlight['hobbs_end'];
-                $hours = (int)floor($lastHobsEnd);
-                $minutes = (int)round(($lastHobsEnd - $hours) * 60);
+                $lastHobbsEnd = (float)$lastFlight['hobbs_end'];
+                $hours = (int)floor($lastHobbsEnd);
+                $minutes = (int)round(($lastHobbsEnd - $hours) * 60);
                 if ($minutes === 60) {
                     $hours++;
                     $minutes = 0;
                 }
                 $hobbsClock = sprintf('%d:%02d', $hours, $minutes);
                 $fromAirfield = strtoupper((string)($lastFlight['to_airfield'] ?? ''));
+            } else {
+                $startHobbs = (float)($aircraftRow['start_hobbs'] ?? 0);
+                $hours = (int)floor($startHobbs);
+                $minutes = (int)round(($startHobbs - $hours) * 60);
+                if ($minutes === 60) {
+                    $hours++;
+                    $minutes = 0;
+                }
+                $hobbsClock = sprintf('%d:%02d', $hours, $minutes);
             }
 
             $manualDefaultsByAircraft[$aircraftId] = [
                 'hobbs_start' => $hobbsClock,
                 'from_airfield' => $fromAirfield,
+                'landings_count' => $startLandings,
             ];
         }
 

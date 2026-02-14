@@ -6,7 +6,7 @@ Klassische PHP/MySQL-Reservations- und Abrechnungssoftware für eine Flugsportgr
 - Login mit Mehrfachrollen: `admin`, `pilot`, `accounting`
 - Benutzerverwaltung (Admin): Benutzer anlegen, mehrere Rollen vergeben, aktiv/deaktiviert, Passwort setzen
 - Reservierungen pro Flugzeug (anlegen, bearbeiten, löschen) inkl. Durchführung
-- Durchführung erfassen mit mehreren Flügen pro Reservierung (Pilot, Von/Nach, Zeiten, Hobs)
+- Durchführung erfassen mit mehreren Flügen pro Reservierung (Pilot, Von/Nach, Zeiten, Hobbs)
 - Flugzeugverwaltung (Immatrikulation, Typ, Status, Basispreis)
 - Preisverwaltung je Pilot und Flugzeug (`aircraft_user_rates`)
 - Rechnungserzeugung aus offenen Stunden (pro Pilot)

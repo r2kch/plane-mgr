@@ -11,9 +11,9 @@
         <th>Von</th>
         <th>Nach</th>
         <th>Landungen</th>
-        <th>Hobs von</th>
-        <th>Hobs bis</th>
-        <th>Hobs h</th>
+        <th>Hobbs von</th>
+        <th>Hobbs bis</th>
+        <th>Hobbs h</th>
         <th>Reservierung</th>
         <th>Aktion</th>
       </tr>
