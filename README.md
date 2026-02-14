@@ -46,6 +46,26 @@ Klassische PHP/MySQL-Reservations- und Abrechnungssoftware für eine Flugsportgr
 - Optional: Für robusten SMTP-Versand `PHPMailer` ergänzen (Host, Port, User, Passwort aus `public/Config.php`).
 - Cronjobs sind aktuell nicht erforderlich. Mail-Queue/Mahnläufe können später ergänzt werden.
 
+## Module-Schalter (global)
+In `public/Config.php` können Module für alle Benutzer global aktiviert/deaktiviert werden:
+
+```php
+'modules' => [
+    'reservations' => true,
+    'billing' => true,
+],
+```
+
+- `reservations = false`:
+  - Menü `Reservierungen` ausgeblendet
+  - Seite `index.php?page=reservations` gesperrt
+  - Dashboard: Kalender + zukünftige Reservierungen ausgeblendet
+
+- `billing = false`:
+  - Menüs `Meine Rechnungen`, `Preise`, `Abrechnung` ausgeblendet
+  - Seiten `my_invoices`, `rates`, `invoices`, `invoice_pdf`, `manual_flight` gesperrt
+  - Dashboard: Karte `Offene Rechnungen` ausgeblendet
+
 ## Hinweise für Entwicklung:
 - `public/cleanup.php` (nur Admin) löscht Rechnungen/Rechnungspositionen und setzt Reservierungen auf "nicht verrechnet" zurück (`invoice_id = NULL`).
 

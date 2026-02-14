@@ -23,4 +23,8 @@ return [
         'from' => 'no-reply@example.com',
         'from_name' => 'Plane Manager',
     ],
+    'modules' => [
+        'reservations' => true,
+        'billing' => true,
+    ],
 ];

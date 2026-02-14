@@ -86,7 +86,7 @@
 <?php endif; ?>
 
 <?php if ($isCaptureMode): ?>
-  <h3>Durchführung erfassen</h3>
+  <h3>Flug erfassen</h3>
   <?php if (!empty($completeLastReservationFlight)): ?>
     <?php
       $lastHobsFrom = (float)$completeLastReservationFlight['hobbs_start'];
@@ -105,6 +105,7 @@
       <?= h(date('d.m.Y H:i', strtotime((string)$completeLastReservationFlight['landing_time']))) ?>,
       <?= h((string)$completeLastReservationFlight['pilot_name']) ?>,
       <?= h((string)$completeLastReservationFlight['from_airfield']) ?> → <?= h((string)$completeLastReservationFlight['to_airfield']) ?>,
+      Landungen <?= (int)($completeLastReservationFlight['landings_count'] ?? 1) ?>,
       Hobs <?= h(sprintf('%d:%02d', $lastHobsFromHours, $lastHobsFromMinutes)) ?> → <?= h(sprintf('%d:%02d', $lastHobsToHours, $lastHobsToMinutes)) ?>
     </div>
   <?php endif; ?>
@@ -142,6 +143,13 @@
           </div>
 
           <div class="flight-row flight-row-2">
+            <label>Anzahl Landungen
+              <input type="number" name="flight_landings_count[]" min="1" step="1" value="1" required>
+            </label>
+            <div></div>
+          </div>
+
+          <div class="flight-row flight-row-2">
             <label>Hobs von
               <input name="flight_hobbs_start[]" placeholder="z.B. 93:12" pattern="^[0-9]+:[0-5][0-9]$" value="<?= h($completeDefaultHobsStart ?? '') ?>" required>
             </label>
@@ -154,7 +162,8 @@
 
       <div class="capture-actions">
         <button type="submit" class="btn-small" name="complete_mode" value="next">Speichern und nächsten Flug</button>
-        <button type="submit" class="btn-small btn-danger-solid" name="complete_mode" value="finish">Abschluss</button>
+        <button type="submit" class="btn-small btn-danger-solid" name="complete_mode" value="finish">Abschluss und Reservation beenden</button>
+        <button type="submit" class="btn-small btn-danger-solid" name="complete_mode" value="finish_without_flight" formnovalidate>Abschluss ohne zustäzlichen Flug</button>
         <a class="btn-ghost btn-small" href="index.php?page=reservations&month=<?= h($month) ?>">Abbrechen</a>
       </div>
     </div>

@@ -69,6 +69,7 @@ CREATE TABLE reservation_flights (
   to_airfield VARCHAR(10) NOT NULL,
   start_time DATETIME NOT NULL,
   landing_time DATETIME NOT NULL,
+  landings_count INT NOT NULL DEFAULT 1,
   hobbs_start DECIMAL(10,2) NOT NULL,
   hobbs_end DECIMAL(10,2) NOT NULL,
   hobbs_hours DECIMAL(10,2) NOT NULL,

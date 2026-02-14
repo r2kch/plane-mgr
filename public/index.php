@@ -12,6 +12,20 @@ if (!in_array($page, $publicPages, true)) {
     require_login();
 }
 
+$modulePages = [
+    'reservations' => 'reservations',
+    'my_invoices' => 'billing',
+    'rates' => 'billing',
+    'invoices' => 'billing',
+    'invoice_pdf' => 'billing',
+    'manual_flight' => 'billing',
+];
+if (isset($modulePages[$page]) && !module_enabled($modulePages[$page])) {
+    flash('error', 'Dieses Modul ist deaktiviert.');
+    header('Location: index.php?page=dashboard');
+    exit;
+}
+
 switch ($page) {
     case 'install':
         $hasUsers = (int)db()->query('SELECT COUNT(*) FROM users')->fetchColumn() > 0;
@@ -110,63 +124,77 @@ switch ($page) {
         break;
 
     case 'dashboard':
-        $dashboardUserId = (int)current_user()['id'];
-        $invoiceCountStmt = db()->prepare("SELECT COUNT(*) FROM invoices WHERE user_id = ? AND payment_status IN ('open', 'part_paid', 'overdue')");
-        $invoiceCountStmt->execute([$dashboardUserId]);
+        $showReservationsModule = module_enabled('reservations');
+        $showBillingModule = module_enabled('billing');
         $counts = [
-            'invoices_open' => (int)$invoiceCountStmt->fetchColumn(),
+            'invoices_open' => 0,
         ];
 
-        $upcomingSql = "SELECT r.id, r.user_id, r.starts_at, r.ends_at, r.notes, a.immatriculation,
-                CONCAT(u.first_name, ' ', u.last_name) AS pilot_name
-            FROM reservations r
-            JOIN aircraft a ON a.id = r.aircraft_id
-            JOIN users u ON u.id = r.user_id
-            WHERE r.status = 'booked' AND r.starts_at >= NOW()";
-        $upcomingParams = [];
-
-        $upcomingSql .= ' ORDER BY COALESCE(a.type, \'\') ASC, a.immatriculation ASC, r.starts_at ASC LIMIT 100';
-        $upcomingStmt = db()->prepare($upcomingSql);
-        $upcomingStmt->execute($upcomingParams);
-        $upcomingReservations = $upcomingStmt->fetchAll();
-
-        $calendarStartInput = (string)($_GET['calendar_start'] ?? date('Y-m-d'));
-        $calendarStartTs = strtotime($calendarStartInput . ' 00:00:00');
-        if ($calendarStartTs === false) {
-            $calendarStartTs = strtotime(date('Y-m-d') . ' 00:00:00');
+        if ($showBillingModule) {
+            $dashboardUserId = (int)current_user()['id'];
+            $invoiceCountStmt = db()->prepare("SELECT COUNT(*) FROM invoices WHERE user_id = ? AND payment_status IN ('open', 'part_paid', 'overdue')");
+            $invoiceCountStmt->execute([$dashboardUserId]);
+            $counts['invoices_open'] = (int)$invoiceCountStmt->fetchColumn();
         }
-        $calendarStartDate = date('Y-m-d', $calendarStartTs);
+
+        $upcomingReservations = [];
+        $calendarStartDate = date('Y-m-d');
+        $calendarEndDate = date('Y-m-d');
         $calendarDaysCount = 7;
-        $calendarEndDate = date('Y-m-d', strtotime($calendarStartDate . ' +' . ($calendarDaysCount - 1) . ' days'));
-        $calendarStartBound = $calendarStartDate . ' 00:00:00';
-        $calendarEndBound = $calendarEndDate . ' 23:59:59';
-
-        $calendarAircraft = db()->query("SELECT id, immatriculation, type
-            FROM aircraft
-            WHERE status = 'active'
-            ORDER BY immatriculation ASC")->fetchAll();
-
-        $calendarSql = "SELECT r.id, r.aircraft_id, r.user_id, r.starts_at, r.ends_at, r.notes,
-                CONCAT(u.first_name, ' ', u.last_name) AS pilot_name
-            FROM reservations r
-            JOIN users u ON u.id = r.user_id
-            WHERE r.status = 'booked'
-              AND r.starts_at <= ?
-              AND r.ends_at >= ?";
-        $calendarParams = [$calendarEndBound, $calendarStartBound];
-        $calendarSql .= ' ORDER BY r.starts_at ASC';
-        $calendarStmt = db()->prepare($calendarSql);
-        $calendarStmt->execute($calendarParams);
-        $calendarReservationsRaw = $calendarStmt->fetchAll();
-
+        $calendarAircraft = [];
         $calendarReservationsByAircraft = [];
-        foreach ($calendarReservationsRaw as $row) {
-            $aircraftId = (int)$row['aircraft_id'];
-            $calendarReservationsByAircraft[$aircraftId][] = $row;
+
+        if ($showReservationsModule) {
+            $upcomingSql = "SELECT r.id, r.user_id, r.starts_at, r.ends_at, r.notes, a.immatriculation,
+                    CONCAT(u.first_name, ' ', u.last_name) AS pilot_name
+                FROM reservations r
+                JOIN aircraft a ON a.id = r.aircraft_id
+                JOIN users u ON u.id = r.user_id
+                WHERE r.status = 'booked' AND r.starts_at >= NOW()";
+            $upcomingParams = [];
+            $upcomingSql .= ' ORDER BY COALESCE(a.type, \'\') ASC, a.immatriculation ASC, r.starts_at ASC LIMIT 100';
+            $upcomingStmt = db()->prepare($upcomingSql);
+            $upcomingStmt->execute($upcomingParams);
+            $upcomingReservations = $upcomingStmt->fetchAll();
+
+            $calendarStartInput = (string)($_GET['calendar_start'] ?? date('Y-m-d'));
+            $calendarStartTs = strtotime($calendarStartInput . ' 00:00:00');
+            if ($calendarStartTs === false) {
+                $calendarStartTs = strtotime(date('Y-m-d') . ' 00:00:00');
+            }
+            $calendarStartDate = date('Y-m-d', $calendarStartTs);
+            $calendarEndDate = date('Y-m-d', strtotime($calendarStartDate . ' +' . ($calendarDaysCount - 1) . ' days'));
+            $calendarStartBound = $calendarStartDate . ' 00:00:00';
+            $calendarEndBound = $calendarEndDate . ' 23:59:59';
+
+            $calendarAircraft = db()->query("SELECT id, immatriculation, type
+                FROM aircraft
+                WHERE status = 'active'
+                ORDER BY immatriculation ASC")->fetchAll();
+
+            $calendarSql = "SELECT r.id, r.aircraft_id, r.user_id, r.starts_at, r.ends_at, r.notes,
+                    CONCAT(u.first_name, ' ', u.last_name) AS pilot_name
+                FROM reservations r
+                JOIN users u ON u.id = r.user_id
+                WHERE r.status = 'booked'
+                  AND r.starts_at <= ?
+                  AND r.ends_at >= ?";
+            $calendarParams = [$calendarEndBound, $calendarStartBound];
+            $calendarSql .= ' ORDER BY r.starts_at ASC';
+            $calendarStmt = db()->prepare($calendarSql);
+            $calendarStmt->execute($calendarParams);
+            $calendarReservationsRaw = $calendarStmt->fetchAll();
+
+            foreach ($calendarReservationsRaw as $row) {
+                $aircraftId = (int)$row['aircraft_id'];
+                $calendarReservationsByAircraft[$aircraftId][] = $row;
+            }
         }
 
         render('Dashboard', 'dashboard', compact(
             'counts',
+            'showReservationsModule',
+            'showBillingModule',
             'upcomingReservations',
             'calendarStartDate',
             'calendarEndDate',
@@ -296,10 +324,11 @@ switch ($page) {
                 $to = trim((string)($_POST['to_airfield'] ?? ''));
                 $startTimeRaw = trim((string)($_POST['start_time'] ?? ''));
                 $landingTimeRaw = trim((string)($_POST['landing_time'] ?? ''));
+                $landingsCount = (int)($_POST['landings_count'] ?? 0);
                 $hobbsStartRaw = trim((string)($_POST['hobbs_start'] ?? ''));
                 $hobbsEndRaw = trim((string)($_POST['hobbs_end'] ?? ''));
 
-                if ($pilotId <= 0 || $from === '' || $to === '' || $startTimeRaw === '' || $landingTimeRaw === '' || $hobbsStartRaw === '' || $hobbsEndRaw === '') {
+                if ($pilotId <= 0 || $from === '' || $to === '' || $startTimeRaw === '' || $landingTimeRaw === '' || $hobbsStartRaw === '' || $hobbsEndRaw === '' || $landingsCount < 1) {
                     flash('error', 'Bitte alle Felder ausfüllen.');
                     header('Location: index.php?page=aircraft_flights&aircraft_id=' . $aircraftId . '&edit_id=' . $flightId);
                     exit;
@@ -328,7 +357,7 @@ switch ($page) {
 
                 $hobbsHours = round($hobbsEnd - $hobbsStart, 2);
                 db()->prepare('UPDATE reservation_flights
-                    SET pilot_user_id = ?, from_airfield = ?, to_airfield = ?, start_time = ?, landing_time = ?, hobbs_start = ?, hobbs_end = ?, hobbs_hours = ?
+                    SET pilot_user_id = ?, from_airfield = ?, to_airfield = ?, start_time = ?, landing_time = ?, landings_count = ?, hobbs_start = ?, hobbs_end = ?, hobbs_hours = ?
                     WHERE id = ?')
                     ->execute([
                         $pilotId,
@@ -336,6 +365,7 @@ switch ($page) {
                         strtoupper($to),
                         date('Y-m-d H:i:s', $startTs),
                         date('Y-m-d H:i:s', $landingTs),
+                        $landingsCount,
                         $hobbsStart,
                         $hobbsEnd,
                         $hobbsHours,
@@ -856,6 +886,7 @@ switch ($page) {
             if ($action === 'complete_save') {
                 $reservationId = (int)($_POST['reservation_id'] ?? 0);
                 $completeMode = (string)($_POST['complete_mode'] ?? 'finish');
+                $isWithoutAdditionalFlight = $completeMode === 'finish_without_flight';
                 $isCompleteNow = $completeMode !== 'next';
                 $reservationStmt = db()->prepare('SELECT * FROM reservations WHERE id = ?');
                 $reservationStmt->execute([$reservationId]);
@@ -874,11 +905,35 @@ switch ($page) {
                     exit;
                 }
 
+                if ($isWithoutAdditionalFlight) {
+                    $savedFlightCountStmt = db()->prepare('SELECT COUNT(*) FROM reservation_flights WHERE reservation_id = ?');
+                    $savedFlightCountStmt->execute([$reservationId]);
+                    $savedFlightCount = (int)$savedFlightCountStmt->fetchColumn();
+                    if ($savedFlightCount === 0) {
+                        flash('error', 'Mindestens ein Flug muss erfasst werden.');
+                        header('Location: index.php?page=reservations&month=' . urlencode($month) . '&complete_id=' . $reservationId);
+                        exit;
+                    }
+
+                    $totalStmt = db()->prepare('SELECT COALESCE(SUM(hobbs_hours), 0) FROM reservation_flights WHERE reservation_id = ?');
+                    $totalStmt->execute([$reservationId]);
+                    $totalHobbsHours = round((float)$totalStmt->fetchColumn(), 2);
+
+                    db()->prepare("UPDATE reservations SET status = 'completed', hours = ? WHERE id = ?")
+                        ->execute([$totalHobbsHours, $reservationId]);
+
+                    audit_log('complete', 'reservation', $reservationId, ['flights' => $savedFlightCount, 'hobbs_hours' => $totalHobbsHours, 'mode' => 'without_additional_flight']);
+                    flash('success', 'Reservierung ohne zusätzlichen Flug abgeschlossen.');
+                    header('Location: index.php?page=reservations&month=' . urlencode($month));
+                    exit;
+                }
+
                 $flightPilotIds = (array)($_POST['flight_pilot_id'] ?? []);
                 $flightFrom = (array)($_POST['flight_from'] ?? []);
                 $flightTo = (array)($_POST['flight_to'] ?? []);
                 $flightStart = (array)($_POST['flight_start_time'] ?? []);
                 $flightLanding = (array)($_POST['flight_landing_time'] ?? []);
+                $flightLandingsCount = (array)($_POST['flight_landings_count'] ?? []);
                 $flightHobbsStart = (array)($_POST['flight_hobbs_start'] ?? []);
                 $flightHobbsEnd = (array)($_POST['flight_hobbs_end'] ?? []);
                 $parseHobbs = static function (string $value): ?float {
@@ -897,6 +952,7 @@ switch ($page) {
                     count($flightTo),
                     count($flightStart),
                     count($flightLanding),
+                    count($flightLandingsCount),
                     count($flightHobbsStart),
                     count($flightHobbsEnd)
                 );
@@ -908,15 +964,16 @@ switch ($page) {
                     $to = trim((string)($flightTo[$i] ?? ''));
                     $startTime = trim((string)($flightStart[$i] ?? ''));
                     $landingTime = trim((string)($flightLanding[$i] ?? ''));
+                    $landingsCount = (int)($flightLandingsCount[$i] ?? 0);
                     $hobbsStart = (string)($flightHobbsStart[$i] ?? '');
                     $hobbsEnd = (string)($flightHobbsEnd[$i] ?? '');
 
-                    $allEmpty = $pilotId === 0 && $from === '' && $to === '' && $startTime === '' && $landingTime === '' && $hobbsStart === '' && $hobbsEnd === '';
+                    $allEmpty = $pilotId === 0 && $from === '' && $to === '' && $startTime === '' && $landingTime === '' && $landingsCount === 0 && $hobbsStart === '' && $hobbsEnd === '';
                     if ($allEmpty) {
                         continue;
                     }
 
-                    if ($pilotId <= 0 || $from === '' || $to === '' || $startTime === '' || $landingTime === '' || $hobbsStart === '' || $hobbsEnd === '') {
+                    if ($pilotId <= 0 || $from === '' || $to === '' || $startTime === '' || $landingTime === '' || $hobbsStart === '' || $hobbsEnd === '' || $landingsCount < 1) {
                         flash('error', 'Bitte alle Flugfelder vollständig ausfüllen.');
                         header('Location: index.php?page=reservations&month=' . urlencode($month) . '&complete_id=' . $reservationId);
                         exit;
@@ -950,6 +1007,7 @@ switch ($page) {
                         'to' => $to,
                         'start_time' => date('Y-m-d H:i:s', $startTs),
                         'landing_time' => date('Y-m-d H:i:s', $landingTs),
+                        'landings_count' => $landingsCount,
                         'hobbs_start' => $hobbsStartVal,
                         'hobbs_end' => $hobbsEndVal,
                         'hobbs_hours' => round($hobbsEndVal - $hobbsStartVal, 2),
@@ -976,8 +1034,8 @@ switch ($page) {
                 db()->beginTransaction();
                 try {
                     $insertFlightStmt = db()->prepare('INSERT INTO reservation_flights
-                        (reservation_id, pilot_user_id, from_airfield, to_airfield, start_time, landing_time, hobbs_start, hobbs_end, hobbs_hours)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)');
+                        (reservation_id, pilot_user_id, from_airfield, to_airfield, start_time, landing_time, landings_count, hobbs_start, hobbs_end, hobbs_hours)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
 
                     foreach ($flights as $flight) {
                         $insertFlightStmt->execute([
@@ -987,6 +1045,7 @@ switch ($page) {
                             $flight['to'],
                             $flight['start_time'],
                             $flight['landing_time'],
+                            $flight['landings_count'],
                             $flight['hobbs_start'],
                             $flight['hobbs_end'],
                             $flight['hobbs_hours'],
@@ -1083,7 +1142,7 @@ switch ($page) {
                     if ($canCompleteReservation((int)$row['user_id'])) {
                         $completeReservation = $row;
                         $lastCurrentReservationStmt = db()->prepare("SELECT rf.hobbs_start, rf.hobbs_end, rf.from_airfield, rf.to_airfield,
-                                rf.start_time, rf.landing_time, rf.pilot_user_id, CONCAT(u.first_name, ' ', u.last_name) AS pilot_name
+                                rf.start_time, rf.landing_time, rf.landings_count, rf.pilot_user_id, CONCAT(u.first_name, ' ', u.last_name) AS pilot_name
                             FROM reservation_flights rf
                             JOIN users u ON u.id = rf.pilot_user_id
                             WHERE rf.reservation_id = ?
@@ -1423,6 +1482,178 @@ switch ($page) {
         }
 
         render('Abrechnung', 'invoices', compact('invoices', 'unbilledPilotHours', 'invoiceStatusFilter', 'invoiceSearch', 'openPilotId', 'openPilotFlights', 'openPilotName'));
+        break;
+
+    case 'manual_flight':
+        require_role('admin', 'accounting');
+
+        if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+            if (!csrf_check($_POST['_csrf'] ?? null)) {
+                flash('error', 'Ungültiger Request.');
+                header('Location: index.php?page=manual_flight');
+                exit;
+            }
+
+            $pilotId = (int)($_POST['pilot_user_id'] ?? 0);
+            $aircraftId = (int)($_POST['aircraft_id'] ?? 0);
+            $from = strtoupper(trim((string)($_POST['from_airfield'] ?? '')));
+            $to = strtoupper(trim((string)($_POST['to_airfield'] ?? '')));
+            $startTimeRaw = trim((string)($_POST['start_time'] ?? ''));
+            $landingTimeRaw = trim((string)($_POST['landing_time'] ?? ''));
+            $landingsCount = (int)($_POST['landings_count'] ?? 0);
+            $hobbsStartRaw = trim((string)($_POST['hobbs_start'] ?? ''));
+            $hobbsEndRaw = trim((string)($_POST['hobbs_end'] ?? ''));
+            $notes = trim((string)($_POST['notes'] ?? ''));
+
+            if ($pilotId <= 0 || $aircraftId <= 0 || $from === '' || $to === '' || $startTimeRaw === '' || $landingTimeRaw === '' || $hobbsStartRaw === '' || $hobbsEndRaw === '' || $landingsCount < 1) {
+                flash('error', 'Bitte alle Pflichtfelder vollständig ausfüllen.');
+                header('Location: index.php?page=manual_flight');
+                exit;
+            }
+
+            $startTs = strtotime($startTimeRaw);
+            $landingTs = strtotime($landingTimeRaw);
+            if ($startTs === false || $landingTs === false || $landingTs <= $startTs) {
+                flash('error', 'Ungültige Start-/Landezeit.');
+                header('Location: index.php?page=manual_flight');
+                exit;
+            }
+
+            $aircraftStatusStmt = db()->prepare('SELECT status FROM aircraft WHERE id = ?');
+            $aircraftStatusStmt->execute([$aircraftId]);
+            if ((string)$aircraftStatusStmt->fetchColumn() !== 'active') {
+                flash('error', 'Dieses Flugzeug ist nicht aktiv.');
+                header('Location: index.php?page=manual_flight');
+                exit;
+            }
+
+            $parseHobbs = static function (string $value): ?float {
+                $trimmed = trim($value);
+                if (!preg_match('/^\d+:[0-5]\d$/', $trimmed)) {
+                    return null;
+                }
+                [$hours, $minutes] = explode(':', $trimmed, 2);
+                return ((int)$hours) + (((int)$minutes) / 60);
+            };
+
+            $hobbsStart = $parseHobbs($hobbsStartRaw);
+            $hobbsEnd = $parseHobbs($hobbsEndRaw);
+            if ($hobbsStart !== null && $hobbsEnd === null) {
+                $diffMinutes = (int)round(($landingTs - $startTs) / 60);
+                if ($diffMinutes > 0) {
+                    $hobbsEnd = $hobbsStart + ($diffMinutes / 60);
+                }
+            }
+
+            if ($hobbsStart === null || $hobbsEnd === null) {
+                flash('error', 'Hobs muss im Format HH:MM sein.');
+                header('Location: index.php?page=manual_flight');
+                exit;
+            }
+            if ($hobbsEnd <= $hobbsStart) {
+                flash('error', 'Hobs bis muss größer als Hobs von sein.');
+                header('Location: index.php?page=manual_flight');
+                exit;
+            }
+
+            $hobbsHours = round($hobbsEnd - $hobbsStart, 2);
+
+            db()->beginTransaction();
+            try {
+                $reservationStmt = db()->prepare("INSERT INTO reservations
+                    (aircraft_id, user_id, starts_at, ends_at, hours, notes, status, created_by)
+                    VALUES (?, ?, ?, ?, ?, ?, 'completed', ?)");
+                $reservationStmt->execute([
+                    $aircraftId,
+                    $pilotId,
+                    date('Y-m-d H:i:s', $startTs),
+                    date('Y-m-d H:i:s', $landingTs),
+                    $hobbsHours,
+                    $notes,
+                    (int)current_user()['id'],
+                ]);
+                $reservationId = (int)db()->lastInsertId();
+
+                $flightStmt = db()->prepare("INSERT INTO reservation_flights
+                    (reservation_id, pilot_user_id, from_airfield, to_airfield, start_time, landing_time, landings_count, hobbs_start, hobbs_end, hobbs_hours)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+                $flightStmt->execute([
+                    $reservationId,
+                    $pilotId,
+                    $from,
+                    $to,
+                    date('Y-m-d H:i:s', $startTs),
+                    date('Y-m-d H:i:s', $landingTs),
+                    $landingsCount,
+                    $hobbsStart,
+                    $hobbsEnd,
+                    $hobbsHours,
+                ]);
+
+                db()->commit();
+                audit_log('create', 'reservation', $reservationId, ['source' => 'manual_flight', 'hobbs_hours' => $hobbsHours]);
+                audit_log('create', 'reservation_flight', (int)db()->lastInsertId(), ['reservation_id' => $reservationId, 'source' => 'manual_flight']);
+                flash('success', 'Flug wurde händisch erfasst und ist abrechenbar.');
+                header('Location: index.php?page=invoices');
+                exit;
+            } catch (Throwable $e) {
+                if (db()->inTransaction()) {
+                    db()->rollBack();
+                }
+                flash('error', 'Flug konnte nicht erfasst werden.');
+                header('Location: index.php?page=manual_flight');
+                exit;
+            }
+        }
+
+        $pilots = db()->query("SELECT u.id, CONCAT(u.first_name, ' ', u.last_name) AS name
+            FROM users u
+            WHERE u.is_active = 1
+              AND EXISTS (
+                SELECT 1 FROM user_roles ur
+                JOIN roles r ON r.id = ur.role_id
+                WHERE ur.user_id = u.id AND r.name = 'pilot'
+              )
+            ORDER BY u.last_name, u.first_name")->fetchAll();
+
+        $aircraft = db()->query("SELECT id, immatriculation, type
+            FROM aircraft
+            WHERE status = 'active'
+            ORDER BY immatriculation")->fetchAll();
+
+        $manualDefaultsByAircraft = [];
+        $lastFlightByAircraftStmt = db()->prepare("SELECT rf.hobbs_end, rf.to_airfield
+            FROM reservation_flights rf
+            JOIN reservations r ON r.id = rf.reservation_id
+            WHERE r.aircraft_id = ?
+            ORDER BY rf.id DESC
+            LIMIT 1");
+        foreach ($aircraft as $aircraftRow) {
+            $aircraftId = (int)$aircraftRow['id'];
+            $lastFlightByAircraftStmt->execute([$aircraftId]);
+            $lastFlight = $lastFlightByAircraftStmt->fetch();
+
+            $hobbsClock = '';
+            $fromAirfield = '';
+            if ($lastFlight) {
+                $lastHobsEnd = (float)$lastFlight['hobbs_end'];
+                $hours = (int)floor($lastHobsEnd);
+                $minutes = (int)round(($lastHobsEnd - $hours) * 60);
+                if ($minutes === 60) {
+                    $hours++;
+                    $minutes = 0;
+                }
+                $hobbsClock = sprintf('%d:%02d', $hours, $minutes);
+                $fromAirfield = strtoupper((string)($lastFlight['to_airfield'] ?? ''));
+            }
+
+            $manualDefaultsByAircraft[$aircraftId] = [
+                'hobbs_start' => $hobbsClock,
+                'from_airfield' => $fromAirfield,
+            ];
+        }
+
+        render('Flug händisch eintragen', 'manual_flight', compact('pilots', 'aircraft', 'manualDefaultsByAircraft'));
         break;
 
     case 'invoice_pdf':

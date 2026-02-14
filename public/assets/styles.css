@@ -255,6 +255,12 @@ body {
   min-width: 220px;
 }
 
+.section-head-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 10px;
+}
+
 label {
   display: flex;
   flex-direction: column;
@@ -320,6 +326,17 @@ a.btn-small {
   background: var(--danger);
   color: #fff;
   border-color: var(--danger);
+}
+
+a.btn-danger-solid {
+  text-decoration: none;
+  background: var(--danger);
+  color: #fff;
+  border: 1px solid var(--danger);
+  border-radius: 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 a.btn-ghost {

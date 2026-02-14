@@ -49,6 +49,9 @@ function db(): PDO
         PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
     ]);
 
+    // Backward-compatible schema update for existing local databases.
+    $pdo->exec('ALTER TABLE reservation_flights ADD COLUMN IF NOT EXISTS landings_count INT NOT NULL DEFAULT 1 AFTER landing_time');
+
     return $pdo;
 }
 
@@ -178,4 +181,9 @@ function can(string $permission): bool
     $allPermissions = array_values(array_unique($allPermissions));
 
     return in_array('all', $allPermissions, true) || in_array($permission, $allPermissions, true);
+}
+
+function module_enabled(string $module): bool
+{
+    return (bool)config('modules.' . $module, true);
 }

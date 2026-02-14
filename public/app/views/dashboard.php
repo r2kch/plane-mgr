@@ -1,29 +1,34 @@
 <h2>Dashboard</h2>
 <?php
+  $showReservationsModule = (bool)($showReservationsModule ?? true);
+  $showBillingModule = (bool)($showBillingModule ?? true);
   $invoicesOpen = (int)$counts['invoices_open'];
   $invoiceTarget = 'index.php?page=my_invoices';
 ?>
-<div class="cards">
-  <article class="card">
-    <h3>Offene Rechnungen</h3>
-    <p class="stat stat-center <?= $invoicesOpen > 1 ? 'stat-danger' : '' ?>">
-      <?php if ($invoicesOpen > 0): ?>
-        <a class="stat-link" href="<?= h($invoiceTarget) ?>"><?= $invoicesOpen ?></a>
-      <?php else: ?>
-        <?= $invoicesOpen ?>
-      <?php endif; ?>
-    </p>
-  </article>
-</div>
+<?php if ($showBillingModule): ?>
+  <div class="cards">
+    <article class="card">
+      <h3>Offene Rechnungen</h3>
+      <p class="stat stat-center <?= $invoicesOpen > 1 ? 'stat-danger' : '' ?>">
+        <?php if ($invoicesOpen > 0): ?>
+          <a class="stat-link" href="<?= h($invoiceTarget) ?>"><?= $invoicesOpen ?></a>
+        <?php else: ?>
+          <?= $invoicesOpen ?>
+        <?php endif; ?>
+      </p>
+    </article>
+  </div>
+<?php endif; ?>
 
-<h3>Kalender</h3>
-<form method="get" class="form-row dashboard-calendar-filter" id="dashboard-calendar-form">
-  <input type="hidden" name="page" value="dashboard">
-  <label>Startdatum
-    <input type="date" name="calendar_start" id="dashboard-calendar-start" value="<?= h($calendarStartDate ?? date('Y-m-d')) ?>">
-  </label>
-  <button type="submit">Anzeigen</button>
-</form>
+<?php if ($showReservationsModule): ?>
+  <h3>Kalender</h3>
+  <form method="get" class="form-row dashboard-calendar-filter" id="dashboard-calendar-form">
+    <input type="hidden" name="page" value="dashboard">
+    <label>Startdatum
+      <input type="date" name="calendar_start" id="dashboard-calendar-start" value="<?= h($calendarStartDate ?? date('Y-m-d')) ?>">
+    </label>
+    <button type="submit">Anzeigen</button>
+  </form>
 
 <?php
   $calendarDaysCount = max(1, (int)($calendarDaysCount ?? 7));
@@ -109,53 +114,58 @@
   </div>
 </div>
 
-<h3>Zukünftige Reservierungen</h3>
-<div class="table-wrap">
-  <table class="entries-table">
-    <thead>
-      <tr>
-        <th>Von</th>
-        <th>Bis</th>
-        <th>Immatrikulation</th>
-        <th>Pilot</th>
-        <th>Notiz</th>
-        <th>Aktion</th>
-      </tr>
-    </thead>
-    <tbody>
-      <?php foreach ($upcomingReservations as $r): ?>
-        <?php
-          $isMine = (int)$r['user_id'] === (int)current_user()['id'];
-          $canComplete = has_role('admin') || (can('reservation.complete.own') && $isMine);
-          $month = date('Y-m', strtotime($r['starts_at']));
-        ?>
+  <h3>Zukünftige Reservierungen</h3>
+  <div class="table-wrap">
+    <table class="entries-table">
+      <thead>
         <tr>
-          <td><?= h(date('d.m.Y H:i', strtotime($r['starts_at']))) ?></td>
-          <td><?= h(date('d.m.Y H:i', strtotime($r['ends_at']))) ?></td>
-          <td><?= h((string)$r['immatriculation']) ?></td>
-          <td><?= h($r['pilot_name']) ?></td>
-          <td class="cell-wrap"><?= h((string)$r['notes']) ?></td>
-          <td>
-            <?php if ($isMine || has_role('admin') || $canComplete): ?>
-              <div class="inline-form">
-                <a class="btn-small" href="index.php?page=reservations&month=<?= h($month) ?>&edit_id=<?= (int)$r['id'] ?>">Bearbeiten</a>
-                <?php if ($canComplete): ?>
-                  <a class="btn-small" href="index.php?page=reservations&month=<?= h($month) ?>&complete_id=<?= (int)$r['id'] ?>">Durchgeführt</a>
-                <?php endif; ?>
-                <form method="post" action="index.php?page=reservations&month=<?= h($month) ?>" class="inline-form" onsubmit="return confirm('Reservierung wirklich löschen?');">
-                  <input type="hidden" name="_csrf" value="<?= h(csrf_token()) ?>">
-                  <input type="hidden" name="action" value="delete">
-                  <input type="hidden" name="reservation_id" value="<?= (int)$r['id'] ?>">
-                  <button class="btn-ghost btn-small" type="submit">Löschen</button>
-                </form>
-              </div>
-            <?php endif; ?>
-          </td>
+          <th>Von</th>
+          <th>Bis</th>
+          <th>Immatrikulation</th>
+          <th>Pilot</th>
+          <th>Notiz</th>
+          <th>Aktion</th>
         </tr>
-      <?php endforeach; ?>
-    </tbody>
-  </table>
-</div>
+      </thead>
+      <tbody>
+        <?php foreach ($upcomingReservations as $r): ?>
+          <?php
+            $isMine = (int)$r['user_id'] === (int)current_user()['id'];
+            $canComplete = has_role('admin') || (can('reservation.complete.own') && $isMine);
+            $month = date('Y-m', strtotime($r['starts_at']));
+          ?>
+          <tr>
+            <td><?= h(date('d.m.Y H:i', strtotime($r['starts_at']))) ?></td>
+            <td><?= h(date('d.m.Y H:i', strtotime($r['ends_at']))) ?></td>
+            <td><?= h((string)$r['immatriculation']) ?></td>
+            <td><?= h($r['pilot_name']) ?></td>
+            <td class="cell-wrap"><?= h((string)$r['notes']) ?></td>
+            <td>
+              <?php if ($isMine || has_role('admin') || $canComplete): ?>
+                <div class="inline-form">
+                  <a class="btn-small" href="index.php?page=reservations&month=<?= h($month) ?>&edit_id=<?= (int)$r['id'] ?>">Bearbeiten</a>
+                  <?php if ($canComplete): ?>
+                    <a class="btn-small" href="index.php?page=reservations&month=<?= h($month) ?>&complete_id=<?= (int)$r['id'] ?>">Durchgeführt</a>
+                  <?php endif; ?>
+                  <form method="post" action="index.php?page=reservations&month=<?= h($month) ?>" class="inline-form" onsubmit="return confirm('Reservierung wirklich löschen?');">
+                    <input type="hidden" name="_csrf" value="<?= h(csrf_token()) ?>">
+                    <input type="hidden" name="action" value="delete">
+                    <input type="hidden" name="reservation_id" value="<?= (int)$r['id'] ?>">
+                    <button class="btn-ghost btn-small" type="submit">Löschen</button>
+                  </form>
+                </div>
+              <?php endif; ?>
+            </td>
+          </tr>
+        <?php endforeach; ?>
+      </tbody>
+    </table>
+  </div>
+<?php endif; ?>
+
+<?php if (!$showBillingModule && !$showReservationsModule): ?>
+  <p>Keine Dashboard-Module aktiv.</p>
+<?php endif; ?>
 
 <script>
   (function () {

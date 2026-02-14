@@ -1,4 +1,7 @@
 <h2>Abrechnung</h2>
+<div class="section-head-actions">
+  <a class="btn-small btn-danger-solid" href="index.php?page=manual_flight">Flug händisch eintragen</a>
+</div>
 
 <h3>Piloten mit offenen Stunden</h3>
 <div class="table-wrap">
