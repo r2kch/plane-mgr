@@ -640,8 +640,18 @@ switch ($page) {
             JOIN aircraft a ON a.id = aur.aircraft_id
             JOIN users u ON u.id = aur.user_id
             ORDER BY u.last_name, a.immatriculation")->fetchAll();
+        $editRate = null;
+        $editRateId = (int)($_GET['edit_rate_id'] ?? 0);
+        if ($editRateId > 0) {
+            foreach ($rates as $rateRow) {
+                if ((int)$rateRow['id'] === $editRateId) {
+                    $editRate = $rateRow;
+                    break;
+                }
+            }
+        }
 
-        render('Preise', 'rates', compact('pilots', 'aircraft', 'rates'));
+        render('Preise', 'rates', compact('pilots', 'aircraft', 'rates', 'editRate'));
         break;
 
     case 'reservations':
