@@ -1,0 +1,132 @@
+<h2>Abrechnung</h2>
+
+<h3>Piloten mit offenen Stunden</h3>
+<div class="table-wrap">
+  <table class="entries-table">
+    <thead>
+      <tr>
+        <th>Pilot</th>
+        <th>Offene Stunden</th>
+        <th>Aktion</th>
+      </tr>
+    </thead>
+    <tbody>
+      <?php if (empty($unbilledPilotHours)): ?>
+        <tr>
+          <td colspan="3">Keine offenen Stunden vorhanden.</td>
+        </tr>
+      <?php else: ?>
+        <?php foreach ($unbilledPilotHours as $row): ?>
+          <?php $isOpenPilot = (int)($openPilotId ?? 0) === (int)$row['pilot_user_id']; ?>
+          <?php $pilotToggleHref = $isOpenPilot
+            ? 'index.php?page=invoices'
+            : 'index.php?page=invoices&open_pilot_id=' . (int)$row['pilot_user_id']; ?>
+          <tr>
+            <td><a href="<?= h($pilotToggleHref) ?>"><?= h($row['pilot_name']) ?></a></td>
+            <td><?= number_format((float)$row['open_hours'], 2, '.', '') ?> h</td>
+            <td>
+              <form method="post" class="inline-form">
+                <input type="hidden" name="_csrf" value="<?= h(csrf_token()) ?>">
+                <input type="hidden" name="action" value="generate_open_for_pilot">
+                <input type="hidden" name="user_id" value="<?= (int)$row['pilot_user_id'] ?>">
+                <button type="submit" class="btn-small">Rechnung erzeugen</button>
+              </form>
+            </td>
+          </tr>
+        <?php endforeach; ?>
+      <?php endif; ?>
+    </tbody>
+  </table>
+</div>
+<?php if (!empty($openPilotFlights)): ?>
+  <h3>Offene Flüge: <?= h($openPilotName) ?></h3>
+  <div class="table-wrap">
+    <table class="entries-table">
+      <thead>
+        <tr>
+          <th>Von (Zeit)</th>
+          <th>Bis (Zeit)</th>
+          <th>Flugzeug</th>
+          <th>Von (Flugplatz)</th>
+          <th>Nach (Flugplatz)</th>
+        </tr>
+      </thead>
+      <tbody>
+        <?php foreach ($openPilotFlights as $f): ?>
+          <tr>
+            <td><?= h(date('d.m.Y H:i', strtotime($f['start_time']))) ?></td>
+            <td><?= h(date('d.m.Y H:i', strtotime($f['landing_time']))) ?></td>
+            <td><?= h($f['immatriculation']) ?></td>
+            <td><?= h($f['from_airfield']) ?></td>
+            <td><?= h($f['to_airfield']) ?></td>
+          </tr>
+        <?php endforeach; ?>
+      </tbody>
+    </table>
+  </div>
+<?php endif; ?>
+
+<h3>Rechnungen</h3>
+<form method="get" class="form-row">
+  <input type="hidden" name="page" value="invoices">
+  <label>Status
+    <select name="invoice_status">
+      <option value="unpaid" <?= ($invoiceStatusFilter ?? 'unpaid') === 'unpaid' ? 'selected' : '' ?>>Nicht bezahlt</option>
+      <option value="all" <?= ($invoiceStatusFilter ?? 'unpaid') === 'all' ? 'selected' : '' ?>>Alle</option>
+      <option value="open" <?= ($invoiceStatusFilter ?? 'unpaid') === 'open' ? 'selected' : '' ?>>Offen</option>
+      <option value="part_paid" <?= ($invoiceStatusFilter ?? 'unpaid') === 'part_paid' ? 'selected' : '' ?>>Teilbezahlt</option>
+      <option value="overdue" <?= ($invoiceStatusFilter ?? 'unpaid') === 'overdue' ? 'selected' : '' ?>>Überfällig</option>
+      <option value="paid" <?= ($invoiceStatusFilter ?? 'unpaid') === 'paid' ? 'selected' : '' ?>>Bezahlt</option>
+    </select>
+  </label>
+  <label>Suche
+    <input name="invoice_q" value="<?= h($invoiceSearch ?? '') ?>" placeholder="Rechnungsnummer oder Kunde">
+  </label>
+  <button type="submit">Filtern</button>
+</form>
+<div class="table-wrap">
+  <table class="entries-table">
+    <thead>
+      <tr><th>Nr.</th><th>Kunde</th><th>Periode</th><th>Total</th><th>Status</th><th>Aktion</th></tr>
+    </thead>
+    <tbody>
+      <?php if (empty($invoices)): ?>
+        <tr><td colspan="6">Keine Rechnungen gefunden.</td></tr>
+      <?php else: ?>
+        <?php foreach ($invoices as $i): ?>
+          <tr>
+            <td><?= h($i['invoice_number']) ?></td>
+            <td><?= h($i['customer_name']) ?></td>
+            <td><?= h($i['period_from']) ?> - <?= h($i['period_to']) ?></td>
+            <td><?= number_format((float)$i['total_amount'], 2, '.', '') ?> CHF</td>
+            <td>
+              <span class="status-chip <?= h($i['payment_status']) ?>"><?= h($i['payment_status']) ?></span>
+              <form method="post" class="inline-form">
+                <input type="hidden" name="_csrf" value="<?= h(csrf_token()) ?>">
+                <input type="hidden" name="action" value="status">
+                <input type="hidden" name="invoice_id" value="<?= (int)$i['id'] ?>">
+                <select name="payment_status">
+                  <?php foreach (['open' => 'Offen', 'part_paid' => 'Teilbezahlt', 'paid' => 'Bezahlt', 'overdue' => 'Überfällig'] as $value => $label): ?>
+                    <option value="<?= h($value) ?>" <?= $i['payment_status'] === $value ? 'selected' : '' ?>><?= h($label) ?></option>
+                  <?php endforeach; ?>
+                </select>
+                <button class="btn-small">Setzen</button>
+              </form>
+            </td>
+            <td>
+              <div class="inline-form">
+                <a class="btn-small" href="index.php?page=invoice_pdf&id=<?= (int)$i['id'] ?>" target="_blank">Rechnung anzeigen</a>
+                <form method="post" class="inline-form" onsubmit="return confirm('Rechnung wirklich stornieren? Stunden werden wieder unverrechnet.');">
+                  <input type="hidden" name="_csrf" value="<?= h(csrf_token()) ?>">
+                  <input type="hidden" name="action" value="cancel_invoice">
+                  <input type="hidden" name="invoice_id" value="<?= (int)$i['id'] ?>">
+                  <button type="submit" class="btn-ghost btn-small">Stornieren</button>
+                </form>
+              </div>
+            </td>
+          </tr>
+        <?php endforeach; ?>
+      <?php endif; ?>
+    </tbody>
+  </table>
+</div>

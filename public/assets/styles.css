@@ -1,0 +1,634 @@
+:root {
+  --bg: #f3f5f8;
+  --card: #ffffff;
+  --ink: #1b263b;
+  --muted: #5f6b7a;
+  --primary: #176087;
+  --primary-soft: #deeff8;
+  --line: #d8dde5;
+  --success: #127a58;
+  --danger: #a12035;
+  --shadow: 0 8px 30px rgba(27, 38, 59, 0.08);
+  --control-height: 52px;
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  font-family: "Manrope", "Segoe UI", sans-serif;
+  color: var(--ink);
+  background:
+    radial-gradient(circle at top right, #d7ebf8 0%, transparent 45%),
+    linear-gradient(180deg, #eef3f8 0%, var(--bg) 55%);
+}
+
+.app-shell {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 24px;
+}
+
+.topbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.topbar h1 { margin: 0; font-size: 1.8rem; letter-spacing: 0.02em; }
+.topbar p { margin: 4px 0 0; color: var(--muted); }
+
+.user-chip {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 10px 14px;
+}
+
+.nav-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.nav-grid a {
+  text-decoration: none;
+  color: var(--primary);
+  background: var(--primary-soft);
+  border-radius: 10px;
+  padding: 8px 12px;
+  font-weight: 700;
+}
+
+.panel {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  box-shadow: var(--shadow);
+  padding: 18px;
+}
+
+.cards {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+
+.card {
+  padding: 14px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: linear-gradient(135deg, #ffffff, #f6f9fc);
+}
+
+.stat {
+  margin: 0;
+  font-size: 2rem;
+  font-weight: 800;
+}
+
+.stat-link {
+  color: inherit;
+  text-decoration: underline;
+}
+
+.stat-center { text-align: center; }
+.stat-danger { color: var(--danger); }
+
+.grid-form {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(180px, 1fr));
+  gap: 10px;
+  margin-bottom: 18px;
+  align-items: end;
+}
+
+.grid-form.narrow { max-width: 450px; }
+.inline-form { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.checks { display: grid; gap: 4px; }
+.checks-inline { display: inline-flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+.checkline { display: inline-flex; align-items: center; gap: 6px; font-weight: 500; color: var(--ink); }
+.role-group { gap: 6px; }
+.role-group .checkline {
+  font-size: 0.98rem;
+  padding: 0;
+}
+.time-controls {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 86px 16px 86px;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  min-width: 0;
+}
+
+.time-controls input[type="date"] {
+  min-width: 0;
+  width: 100%;
+  height: var(--control-height);
+  min-inline-size: 140px;
+  font-variant-numeric: tabular-nums;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.time-controls select {
+  width: 100%;
+  min-width: 0;
+  height: var(--control-height);
+  text-align: center;
+  text-align-last: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.time-controls input[type="date"]::-webkit-date-and-time-value {
+  text-align: left;
+}
+
+.time-sep {
+  text-align: center;
+  font-weight: 800;
+  color: var(--muted);
+  font-size: 1.5rem;
+  line-height: 1;
+}
+
+.reservation-form {
+  grid-template-columns: repeat(2, minmax(260px, 1fr));
+}
+
+.reservation-form .reservation-time {
+  grid-column: 1 / -1;
+}
+
+.reservation-form .reservation-aircraft {
+  grid-column: 1;
+}
+
+.reservation-form .reservation-aircraft-full {
+  grid-column: 1 / -1;
+}
+
+.reservation-form .reservation-pilot {
+  grid-column: 2;
+}
+
+.reservation-form .reservation-notes {
+  grid-column: 1;
+}
+
+.reservation-form .reservation-submit {
+  grid-column: 2;
+}
+
+.reservation-form > label > select {
+  height: var(--control-height);
+}
+
+.capture-form {
+  margin-bottom: 18px;
+}
+
+.capture-layout {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+  align-items: stretch;
+}
+
+.flight-cards {
+  display: grid;
+  gap: 12px;
+}
+
+.flight-card {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 12px;
+  background: #fbfdff;
+}
+
+.flight-row {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.flight-row:last-child {
+  margin-bottom: 0;
+}
+
+.flight-row-3 {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.flight-row-2 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.flight-row-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.flight-card input,
+.flight-card select {
+  width: 100%;
+}
+
+.capture-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.capture-actions .btn-small,
+.capture-actions .btn-ghost {
+  min-width: 220px;
+}
+
+label {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+input, select, button {
+  font: inherit;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  padding: 9px 12px;
+  min-height: var(--control-height);
+}
+
+select {
+  padding-right: 30px;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+  background-image:
+    linear-gradient(45deg, transparent 50%, var(--muted) 50%),
+    linear-gradient(135deg, var(--muted) 50%, transparent 50%);
+  background-position:
+    calc(100% - 18px) calc(50% - 3px),
+    calc(100% - 12px) calc(50% - 3px);
+  background-size: 6px 6px, 6px 6px;
+  background-repeat: no-repeat;
+}
+
+button {
+  background: var(--primary);
+  color: #fff;
+  border-color: var(--primary);
+  cursor: pointer;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+a.btn-small {
+  text-decoration: none;
+  background: var(--primary);
+  color: #fff;
+  border: 1px solid var(--primary);
+  border-radius: 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.btn-ghost {
+  background: #fff;
+  color: var(--danger);
+  border-color: #eab6c0;
+}
+
+.btn-danger-solid {
+  background: var(--danger);
+  color: #fff;
+  border-color: var(--danger);
+}
+
+a.btn-ghost {
+  text-decoration: none;
+  background: #fff;
+  color: var(--danger);
+  border: 1px solid #eab6c0;
+  border-radius: 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.btn-small {
+  min-height: 40px;
+  padding: 6px 12px;
+  font-size: 0.95rem;
+}
+
+.grid-form > button {
+  width: 100%;
+  align-self: end;
+}
+
+.form-row {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) minmax(220px, 1fr);
+  gap: 10px;
+  align-items: end;
+  margin-bottom: 18px;
+}
+
+.form-row > button {
+  width: 100%;
+}
+
+a { color: var(--primary); }
+
+.table-wrap {
+  width: 100%;
+  overflow-x: auto;
+  margin-top: 10px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 0;
+  min-width: 760px;
+  background: #fff;
+}
+
+th, td {
+  text-align: left;
+  border-bottom: 1px solid var(--line);
+  padding: 7px 8px;
+  vertical-align: top;
+  white-space: nowrap;
+}
+
+td .inline-form {
+  white-space: normal;
+}
+
+th {
+  color: var(--muted);
+  font-weight: 700;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: #f6f9fc;
+}
+
+.status-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 10px;
+  border-radius: 999px;
+  border: 1px solid;
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+.status-chip.active,
+.status-chip.booked,
+.status-chip.paid {
+  background: #ecfaf4;
+  border-color: #bde9d8;
+  color: #106b4d;
+}
+
+.status-chip.maintenance,
+.status-chip.part_paid {
+  background: #fff7ea;
+  border-color: #f1d7a5;
+  color: #8c5a00;
+}
+
+.status-chip.disabled,
+.status-chip.cancelled,
+.status-chip.overdue {
+  background: #fff2f5;
+  border-color: #f3c0cb;
+  color: #a12035;
+}
+
+.status-chip.completed,
+.status-chip.open {
+  background: #edf4fb;
+  border-color: #bdd6eb;
+  color: #16547a;
+}
+
+.cell-wrap {
+  white-space: normal;
+  word-break: break-word;
+}
+
+.entries-table th,
+.entries-table td {
+  vertical-align: middle;
+}
+
+.timeline-wrap {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #fff;
+  overflow-x: auto;
+  margin-top: 10px;
+  margin-bottom: 16px;
+}
+
+.timeline-grid {
+  --timeline-label-width: 220px;
+  width: 100%;
+  min-width: 0;
+}
+
+.timeline-days {
+  display: grid;
+  grid-template-columns: repeat(var(--timeline-days), minmax(0, 1fr));
+  border-bottom: 1px solid var(--line);
+}
+
+.timeline-days span {
+  text-align: center;
+  color: var(--muted);
+  font-weight: 700;
+  padding: 8px 0;
+  border-left: 1px solid var(--line);
+}
+
+.timeline-days span:first-child {
+  border-left: none;
+}
+
+.timeline-row {
+  display: grid;
+  grid-template-columns: var(--timeline-label-width) minmax(0, 1fr);
+}
+
+.timeline-row-head .timeline-left {
+  border-bottom: 1px solid var(--line);
+  min-height: 42px;
+  color: var(--muted);
+}
+
+.timeline-left {
+  border-right: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  padding: 10px 12px;
+  display: flex;
+  align-items: center;
+  font-weight: 700;
+}
+
+.timeline-lane {
+  position: relative;
+  min-height: 48px;
+  border-bottom: 1px solid var(--line);
+  background-image: repeating-linear-gradient(
+    to right,
+    transparent,
+    transparent calc((100% / var(--timeline-days)) - 1px),
+    var(--line) calc((100% / var(--timeline-days)) - 1px),
+    var(--line) calc(100% / var(--timeline-days))
+  );
+}
+
+.timeline-day-links {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  grid-template-columns: repeat(var(--timeline-days), minmax(0, 1fr));
+  z-index: 1;
+}
+
+.timeline-day-link {
+  display: block;
+  border-left: 1px solid transparent;
+}
+
+.timeline-day-link:first-child {
+  border-left: none;
+}
+
+.timeline-day-link:hover {
+  background: rgba(23, 96, 135, 0.08);
+}
+
+.timeline-bar {
+  position: absolute;
+  top: 7px;
+  height: 34px;
+  border-radius: 8px;
+  background: #c22a3d;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  padding: 0 10px;
+  min-width: 34px;
+  font-size: 0.85rem;
+  font-weight: 700;
+  overflow: hidden;
+  cursor: default;
+  z-index: 2;
+}
+
+.timeline-bar span {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.flash {
+  border-radius: 10px;
+  padding: 10px 12px;
+  margin-bottom: 10px;
+  border: 1px solid;
+}
+
+.flash-success { color: var(--success); background: #edf9f4; border-color: #bde9d8; }
+.flash-error { color: var(--danger); background: #fff2f5; border-color: #f3c0cb; }
+
+.invoice-sheet {
+  max-width: 900px;
+  margin: 0 auto;
+  background: #fff;
+  padding: 20px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+
+.user-list {
+  display: grid;
+  gap: 12px;
+}
+
+.user-item {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 12px;
+  background: #fbfdff;
+}
+
+.user-grid {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.user-item input,
+.user-item select {
+  min-height: 44px;
+}
+
+.user-meta {
+  justify-content: flex-start;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.user-delete-form {
+  display: none;
+}
+
+@media (max-width: 680px) {
+  .app-shell { padding: 12px; }
+  .topbar { flex-direction: column; align-items: flex-start; gap: 8px; }
+  .panel { padding: 12px; }
+  .grid-form { grid-template-columns: 1fr; }
+  .form-row { grid-template-columns: 1fr; }
+  .inline-form { width: 100%; }
+  .inline-form button, .inline-form select, .inline-form input { width: 100%; }
+  .user-grid { grid-template-columns: 1fr; }
+  .capture-layout { grid-template-columns: 1fr; }
+  .reservation-form .reservation-aircraft,
+  .reservation-form .reservation-aircraft-full,
+  .reservation-form .reservation-pilot,
+  .reservation-form .reservation-time,
+  .reservation-form .reservation-notes,
+  .reservation-form .reservation-submit { grid-column: auto; }
+  .flight-row-3,
+  .flight-row-2 { grid-template-columns: 1fr; }
+}
+
+@media (min-width: 681px) and (max-width: 1050px) {
+  .grid-form { grid-template-columns: repeat(2, minmax(180px, 1fr)); }
+  .user-grid { grid-template-columns: repeat(2, minmax(180px, 1fr)); }
+  .reservation-form .reservation-aircraft,
+  .reservation-form .reservation-aircraft-full,
+  .reservation-form .reservation-pilot,
+  .reservation-form .reservation-time,
+  .reservation-form .reservation-notes,
+  .reservation-form .reservation-submit { grid-column: auto; }
+}

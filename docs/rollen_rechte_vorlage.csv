@@ -1,0 +1,17 @@
+Funktion,Admin,Pilot,Buchhaltung,Notiz
+Login/Logout,JA,JA,JA,Basiszugriff
+Nutzer verwalten (anlegen/ändern/deaktivieren),JA,NEIN,NEIN,
+Flugzeuge verwalten (Immatrikulation/Typ/Status/Basispreis),JA,NEIN,NEIN,
+Individuelle Preise je Flugzeug/Mieter pflegen,JA,NEIN,NEIN,
+Reservierung erstellen,JA,JA,NEIN,
+Eigene Reservierung stornieren,JA,JA,NEIN,
+Fremde Reservierung stornieren,JA,NEIN,NEIN,
+Reservierung als durchgeführt markieren,JA,JA,NEIN,Optional eigene/zugewiesene Reservierungen
+Dashboard: Durchgeführt-Button bei zukünftigen Reservierungen,JA,JA,NEIN,Pilot nur eigene Reservierungen; Admin alle
+Monatskalender ansehen,JA,JA,JA,
+Rechnung erzeugen,JA,NEIN,JA,
+Rechnung als PDF erzeugen,JA,NEIN,JA,
+Rechnung per E-Mail versenden (SMTP),JA,NEIN,JA,
+Zahlungsstatus ändern (offen/teilbezahlt/bezahlt/überfällig),JA,NEIN,JA,
+Audit-Log einsehen,JA,NEIN,NEIN,
+Systemeinstellungen (SMTP/App),JA,NEIN,NEIN,
