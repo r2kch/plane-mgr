@@ -1,6 +1,6 @@
-# Plane Manager (MVP)
+# Plane Manager 
 
-Klassische PHP/MySQL-Reservations- und Abrechnungssoftware für generisches Webhosting.
+Klassische PHP/MySQL-Reservations- und Abrechnungssoftware für eine Flugsportgruppe
 
 ## Enthaltene Funktionen
 - Login mit Mehrfachrollen: `admin`, `pilot`, `accounting`
