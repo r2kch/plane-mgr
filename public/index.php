@@ -155,7 +155,7 @@ switch ($page) {
                 JOIN users u ON u.id = r.user_id
                 WHERE r.status = 'booked' AND r.starts_at >= NOW()";
             $upcomingParams = [];
-            $upcomingSql .= ' ORDER BY COALESCE(a.type, \'\') ASC, a.immatriculation ASC, r.starts_at ASC LIMIT 100';
+            $upcomingSql .= ' ORDER BY r.starts_at ASC, r.id ASC LIMIT 100';
             $upcomingStmt = db()->prepare($upcomingSql);
             $upcomingStmt->execute($upcomingParams);
             $upcomingReservations = $upcomingStmt->fetchAll();
@@ -1084,7 +1084,9 @@ switch ($page) {
                     exit;
                 }
 
-                if (!$isAircraftPermittedForCurrentUser($aircraftId)) {
+                $isSameAircraft = $aircraftId === (int)$reservation['aircraft_id'];
+                $canUseAircraftForUpdate = $isSameAircraft || $isAircraftPermittedForCurrentUser($aircraftId);
+                if (!$canUseAircraftForUpdate) {
                     flash('error', 'Dieses Flugzeug ist für Sie nicht reservierbar.');
                     header('Location: index.php?page=reservations&month=' . urlencode($month) . '&edit_id=' . $reservationId);
                     exit;
@@ -1352,13 +1354,22 @@ switch ($page) {
         if ($groupRestrictedPilot) {
             $aircraftStmt = db()->prepare("SELECT a.id, a.immatriculation, a.type, a.status, a.start_hobbs, a.start_landings
                 FROM aircraft a
-                JOIN user_aircraft_groups uag ON uag.group_id = a.aircraft_group_id
-                WHERE uag.user_id = ?
-                  AND a.status = 'active'
-                  AND a.aircraft_group_id IS NOT NULL
-                GROUP BY a.id, a.immatriculation, a.type, a.status, a.start_hobbs, a.start_landings
+                WHERE a.status = 'active'
+                  AND (
+                    (a.aircraft_group_id IS NOT NULL AND EXISTS (
+                        SELECT 1 FROM user_aircraft_groups uag
+                        WHERE uag.group_id = a.aircraft_group_id
+                          AND uag.user_id = ?
+                    ))
+                    OR EXISTS (
+                        SELECT 1 FROM reservations r2
+                        WHERE r2.aircraft_id = a.id
+                          AND r2.user_id = ?
+                          AND r2.status = 'booked'
+                    )
+                  )
                 ORDER BY a.immatriculation");
-            $aircraftStmt->execute([$currentUserId]);
+            $aircraftStmt->execute([$currentUserId, $currentUserId]);
             $aircraft = $aircraftStmt->fetchAll();
         } else {
             $aircraft = db()->query("SELECT id, immatriculation, type, status, start_hobbs, start_landings FROM aircraft WHERE status = 'active' ORDER BY immatriculation")->fetchAll();
@@ -1388,19 +1399,7 @@ switch ($page) {
             $sql .= ' AND r.user_id = ?';
             $params[] = (int)current_user()['id'];
         }
-        if ($groupRestrictedPilot) {
-            if ($permittedAircraftIds === []) {
-                $sql .= ' AND 1 = 0';
-            } else {
-                $placeholders = implode(',', array_fill(0, count($permittedAircraftIds), '?'));
-                $sql .= " AND r.aircraft_id IN ($placeholders)";
-                foreach ($permittedAircraftIds as $id) {
-                    $params[] = $id;
-                }
-            }
-        }
-
-        $sql .= ' ORDER BY r.starts_at';
+        $sql .= ' ORDER BY r.starts_at ASC, r.id ASC';
         $stmt = db()->prepare($sql);
         $stmt->execute($params);
         $reservations = $stmt->fetchAll();
