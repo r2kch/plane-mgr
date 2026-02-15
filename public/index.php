@@ -2063,7 +2063,6 @@ switch ($page) {
         break;
 
     case 'invoice_pdf':
-        require_role('admin', 'accounting');
         $invoiceId = (int)($_GET['id'] ?? 0);
 
         $stmt = db()->prepare('SELECT i.*, CONCAT(u.first_name, " ", u.last_name) AS customer_name, u.email,
@@ -2077,6 +2076,13 @@ switch ($page) {
         if (!$invoice) {
             http_response_code(404);
             exit('Rechnung nicht gefunden.');
+        }
+
+        $currentUserId = (int)current_user()['id'];
+        $hasInvoiceAccess = has_role('admin', 'accounting') || (int)$invoice['user_id'] === $currentUserId;
+        if (!$hasInvoiceAccess) {
+            http_response_code(403);
+            exit('Kein Zugriff.');
         }
 
         $itemsStmt = db()->prepare('SELECT * FROM invoice_items WHERE invoice_id = ? ORDER BY flight_date ASC, id ASC');
