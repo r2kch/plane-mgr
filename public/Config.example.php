@@ -7,6 +7,7 @@ return [
         'name' => 'Plane Manager',
         'url' => 'https://example.com',
         'env' => 'prod',
+        'timezone' => 'Europe/Zurich',
     ],
     'db' => [
         'host' => '127.0.0.1',

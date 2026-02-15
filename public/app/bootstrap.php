@@ -221,7 +221,14 @@ function smtp_enabled(): bool
     return $enabled && $host !== '' && $port > 0 && $from !== '';
 }
 
-function smtp_send_mail(string $to, string $subject, string $htmlBody, ?string $textBody = null, array $attachments = []): array
+function smtp_send_mail(
+    string $to,
+    string $subject,
+    string $htmlBody,
+    ?string $textBody = null,
+    array $attachments = [],
+    ?array $calendarPart = null
+): array
 {
     $enabled = (bool)config('smtp.enabled', true);
     $host = trim((string)config('smtp.host', ''));
@@ -346,7 +353,8 @@ function smtp_send_mail(string $to, string $subject, string $htmlBody, ?string $
         'Subject: ' . $encodedSubject,
         'MIME-Version: 1.0',
     ];
-    $hasAttachments = !empty($attachments);
+    $hasCalendarPart = is_array($calendarPart) && !empty($calendarPart['content']);
+    $hasAttachments = !empty($attachments) || $hasCalendarPart;
     if ($hasAttachments) {
         $headers[] = 'Content-Type: multipart/mixed; boundary="' . $boundaryMixed . '"';
     } else {
@@ -374,6 +382,19 @@ function smtp_send_mail(string $to, string $subject, string $htmlBody, ?string $
     $bodyLines[] = '';
 
     if ($hasAttachments) {
+        if ($hasCalendarPart) {
+            $calMethod = strtoupper(trim((string)($calendarPart['method'] ?? 'REQUEST')));
+            $calName = trim((string)($calendarPart['filename'] ?? 'invite.ics'));
+            $calContent = (string)$calendarPart['content'];
+            $safeCalName = str_replace(['"', "\r", "\n"], '', $calName);
+            $bodyLines[] = '--' . $boundaryMixed;
+            $bodyLines[] = 'Content-Type: text/calendar; method=' . $calMethod . '; charset=UTF-8; name="' . $safeCalName . '"';
+            $bodyLines[] = 'Content-Transfer-Encoding: 8bit';
+            $bodyLines[] = 'Content-Disposition: inline; filename="' . $safeCalName . '"';
+            $bodyLines[] = '';
+            $bodyLines[] = $calContent;
+        }
+
         foreach ($attachments as $attachment) {
             $filename = trim((string)($attachment['filename'] ?? 'attachment.bin'));
             $content = (string)($attachment['content'] ?? '');

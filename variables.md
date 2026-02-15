@@ -105,6 +105,12 @@ Diese Platzhalter können in folgenden Dateien verwendet werden:
 - `public/templates/mail_invoice_cancel_body.txt`
 - `public/templates/mail_invoice_reminder_subject.txt`
 - `public/templates/mail_invoice_reminder_body.txt`
+- `public/templates/mail_reservation_subject.txt`
+- `public/templates/mail_reservation_body.txt`
+- `public/templates/mail_reservation_update_subject.txt`
+- `public/templates/mail_reservation_update_body.txt`
+- `public/templates/mail_reservation_cancel_subject.txt`
+- `public/templates/mail_reservation_cancel_body.txt`
 
 Verfügbare Platzhalter:
 
@@ -121,3 +127,14 @@ Zusätzliche Alias-Platzhalter:
 - `{NUMMER}` (gleich wie `{invoice.invoice_number}`)
 - `{Vorname}` (gleich wie `{customer.first_name}`)
 - `{zahlbar bis}` (gleich wie `{invoiceMeta.due_date}`)
+
+Zusätzliche Platzhalter für Reservierungs-Mails:
+
+- `{reservation.id}`
+- `{reservation.aircraft}`
+- `{reservation.immatriculation}`
+- `{reservation.aircraft_type}`
+- `{reservation.start}` (`d.m.Y H:i`)
+- `{reservation.end}` (`d.m.Y H:i`)
+- `{reservation.notes}`
+- `{reservation.notes_or_dash}`

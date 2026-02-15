@@ -1,0 +1,11 @@
+Hallo {customer.first_name}
+
+deine Reservierung wurde storniert.
+
+Flugzeug: {reservation.aircraft}
+Start der Reservierung: {reservation.start}
+Ende der Reservierung: {reservation.end}
+Notiz: {reservation.notes_or_dash}
+
+Liebe Grüsse,
+{issuer.full}

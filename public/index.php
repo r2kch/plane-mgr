@@ -968,6 +968,207 @@ switch ($page) {
               AND ends_at > ?
               AND (? IS NULL OR id <> ?)");
 
+        $reservationMailDataById = static function (int $reservationId): ?array {
+            $stmt = db()->prepare("SELECT
+                    r.id,
+                    r.user_id,
+                    r.aircraft_id,
+                    r.starts_at,
+                    r.ends_at,
+                    r.notes,
+                    a.immatriculation,
+                    a.type AS aircraft_type,
+                    u.first_name AS pilot_first_name,
+                    u.last_name AS pilot_last_name,
+                    u.email AS pilot_email
+                FROM reservations r
+                JOIN aircraft a ON a.id = r.aircraft_id
+                JOIN users u ON u.id = r.user_id
+                WHERE r.id = ?");
+            $stmt->execute([$reservationId]);
+            $row = $stmt->fetch();
+            return $row ?: null;
+        };
+
+        $buildReservationIcs = static function (array $reservation, string $method, int $sequence): string {
+            $timezone = (string)config('app.timezone', 'Europe/Zurich');
+            $appUrl = (string)config('app.url', '');
+            $host = parse_url($appUrl, PHP_URL_HOST);
+            if (!is_string($host) || $host === '') {
+                $host = 'plane-manager.local';
+            }
+            $uid = 'reservation-' . (int)$reservation['id'] . '@' . $host;
+            $summary = 'Reservierung ' . (string)$reservation['immatriculation'] . ' / ' . (string)$reservation['aircraft_type'];
+            $descriptionParts = [
+                'Pilot: ' . trim((string)$reservation['pilot_first_name'] . ' ' . (string)$reservation['pilot_last_name']),
+            ];
+            if (trim((string)$reservation['notes']) !== '') {
+                $descriptionParts[] = 'Notiz: ' . trim((string)$reservation['notes']);
+            }
+            $description = implode('\n', array_map(static fn(string $value): string => str_replace([',', ';'], ['\\,', '\\;'], $value), $descriptionParts));
+            $location = str_replace([',', ';'], ['\\,', '\\;'], (string)$reservation['immatriculation'] . ' / ' . (string)$reservation['aircraft_type']);
+
+            $from = trim((string)config('smtp.from', ''));
+            $fromName = trim((string)config('smtp.from_name', ''));
+            $organizerLine = '';
+            if ($from !== '') {
+                $safeFromName = str_replace([',', ';'], ['\\,', '\\;'], $fromName !== '' ? $fromName : 'Plane Manager');
+                $organizerLine = "ORGANIZER;CN={$safeFromName}:mailto:{$from}\r\n";
+            }
+            $attendeeLine = '';
+            $attendeeMail = trim((string)($reservation['pilot_email'] ?? ''));
+            if ($attendeeMail !== '') {
+                $attendeeName = str_replace([',', ';'], ['\\,', '\\;'], trim((string)$reservation['pilot_first_name'] . ' ' . (string)$reservation['pilot_last_name']));
+                $attendeeLine = "ATTENDEE;CN={$attendeeName};ROLE=REQ-PARTICIPANT;PARTSTAT=NEEDS-ACTION;RSVP=TRUE:mailto:{$attendeeMail}\r\n";
+            }
+
+            $tz = new DateTimeZone($timezone);
+            $utc = new DateTimeZone('UTC');
+            $startDt = DateTimeImmutable::createFromFormat('Y-m-d H:i:s', (string)$reservation['starts_at'], $tz)
+                ?: new DateTimeImmutable((string)$reservation['starts_at'], $tz);
+            $endDt = DateTimeImmutable::createFromFormat('Y-m-d H:i:s', (string)$reservation['ends_at'], $tz)
+                ?: new DateTimeImmutable((string)$reservation['ends_at'], $tz);
+            $startUtc = $startDt->setTimezone($utc)->format('Ymd\THis\Z');
+            $endUtc = $endDt->setTimezone($utc)->format('Ymd\THis\Z');
+            $dtStamp = gmdate('Ymd\THis\Z');
+            $status = strtoupper($method) === 'CANCEL' ? 'CANCELLED' : 'CONFIRMED';
+
+            $lines = [
+                'BEGIN:VCALENDAR',
+                'PRODID:-//Plane Manager//Reservation//DE',
+                'VERSION:2.0',
+                'CALSCALE:GREGORIAN',
+                'METHOD:' . strtoupper($method),
+                'BEGIN:VEVENT',
+                'UID:' . $uid,
+                'DTSTAMP:' . $dtStamp,
+                'SEQUENCE:' . max(0, $sequence),
+                'SUMMARY:' . str_replace([',', ';'], ['\\,', '\\;'], $summary),
+                'STATUS:' . $status,
+                'DTSTART:' . $startUtc,
+                'DTEND:' . $endUtc,
+                'LOCATION:' . $location,
+                'DESCRIPTION:' . $description,
+            ];
+            if ($organizerLine !== '') {
+                $lines[] = rtrim($organizerLine);
+            }
+            if ($attendeeLine !== '') {
+                $lines[] = rtrim($attendeeLine);
+            }
+            $lines[] = 'END:VEVENT';
+            $lines[] = 'END:VCALENDAR';
+
+            return implode("\r\n", $lines) . "\r\n";
+        };
+
+        $sendReservationMail = static function (array $reservation, string $event) use ($buildReservationIcs): array {
+            $to = trim((string)$reservation['pilot_email']);
+            if (!filter_var($to, FILTER_VALIDATE_EMAIL)) {
+                return ['ok' => false, 'error' => 'Keine gültige Pilot-E-Mail vorhanden.'];
+            }
+
+            $issuer = [
+                'name' => (string)config('invoice.issuer.name', ''),
+                'street' => (string)config('invoice.issuer.street', ''),
+                'house_number' => (string)config('invoice.issuer.house_number', ''),
+                'postal_code' => (string)config('invoice.issuer.postal_code', ''),
+                'city' => (string)config('invoice.issuer.city', ''),
+                'country' => (string)config('invoice.issuer.country', 'Schweiz'),
+                'email' => (string)config('invoice.issuer.email', ''),
+                'phone' => (string)config('invoice.issuer.phone', ''),
+                'website' => (string)config('invoice.issuer.website', ''),
+            ];
+            $issuerFull = trim(implode("\n", array_filter([
+                (string)$issuer['name'],
+                trim((string)$issuer['street'] . ' ' . (string)$issuer['house_number']),
+                trim((string)$issuer['postal_code'] . ' ' . (string)$issuer['city']),
+                (string)$issuer['country'],
+                (string)$issuer['email'] !== '' ? 'E-Mail: ' . (string)$issuer['email'] : '',
+                (string)$issuer['phone'] !== '' ? 'Telefon: ' . (string)$issuer['phone'] : '',
+                (string)$issuer['website'] !== '' ? (string)$issuer['website'] : '',
+            ])));
+
+            $startDisplay = date('d.m.Y H:i', strtotime((string)$reservation['starts_at']));
+            $endDisplay = date('d.m.Y H:i', strtotime((string)$reservation['ends_at']));
+            $notes = trim((string)$reservation['notes']);
+
+            $prefix = match ($event) {
+                'create' => 'mail_reservation',
+                'update' => 'mail_reservation_update',
+                'cancel' => 'mail_reservation_cancel',
+                default => 'mail_reservation',
+            };
+            $subjectTemplatePath = __DIR__ . '/templates/' . $prefix . '_subject.txt';
+            $bodyTemplatePath = __DIR__ . '/templates/' . $prefix . '_body.txt';
+            $fallbackSubject = match ($event) {
+                'update' => '{issuer.name}: Reservierung geändert {reservation.aircraft} {reservation.start}-{reservation.end}',
+                'cancel' => '{issuer.name}: Reservierung storniert {reservation.aircraft} {reservation.start}-{reservation.end}',
+                default => '{issuer.name}: Neue Reservierung {reservation.aircraft} {reservation.start}-{reservation.end}',
+            };
+            $fallbackBody = "Hallo {customer.first_name}\n\nFlugzeug: {reservation.aircraft}\nStart: {reservation.start}\nEnde: {reservation.end}\nNotiz: {reservation.notes_or_dash}\n\nLiebe Grüsse,\n{issuer.full}";
+
+            $subjectTemplate = is_file($subjectTemplatePath) ? (string)file_get_contents($subjectTemplatePath) : $fallbackSubject;
+            $bodyTemplate = is_file($bodyTemplatePath) ? (string)file_get_contents($bodyTemplatePath) : $fallbackBody;
+
+            $replacements = [
+                '{issuer.name}' => (string)$issuer['name'],
+                '{issuer.full}' => $issuerFull,
+                '{customer.first_name}' => (string)$reservation['pilot_first_name'],
+                '{customer.last_name}' => (string)$reservation['pilot_last_name'],
+                '{customer.name}' => trim((string)$reservation['pilot_first_name'] . ' ' . (string)$reservation['pilot_last_name']),
+                '{reservation.id}' => (string)$reservation['id'],
+                '{reservation.aircraft}' => (string)$reservation['immatriculation'] . ' / ' . (string)$reservation['aircraft_type'],
+                '{reservation.immatriculation}' => (string)$reservation['immatriculation'],
+                '{reservation.aircraft_type}' => (string)$reservation['aircraft_type'],
+                '{reservation.start}' => $startDisplay,
+                '{reservation.end}' => $endDisplay,
+                '{reservation.notes}' => $notes,
+                '{reservation.notes_or_dash}' => $notes !== '' ? $notes : '-',
+            ];
+
+            $subject = trim(strtr($subjectTemplate, $replacements));
+            $textBody = strtr($bodyTemplate, $replacements);
+            $htmlBody = nl2br(h($textBody), false);
+
+            $sendResult = ['ok' => false, 'error' => 'Unbekannter Versandfehler'];
+            $auditMeta = ['to' => $to, 'provider' => 'smtp'];
+            if ($event === 'cancel') {
+                $sendResult = smtp_send_mail($to, $subject, $htmlBody, $textBody);
+            } else {
+                $method = 'REQUEST';
+                $sequence = (int)round(microtime(true) * 1000);
+                $ics = $buildReservationIcs($reservation, $method, $sequence);
+                $icsName = 'reservation-' . (int)$reservation['id'] . '.ics';
+                $sendResult = smtp_send_mail(
+                    $to,
+                    $subject,
+                    $htmlBody,
+                    $textBody,
+                    [[
+                        'filename' => $icsName,
+                        'mime' => 'application/ics',
+                        'content' => $ics,
+                    ]],
+                    [
+                        'filename' => $icsName,
+                        'method' => $method,
+                        'content' => $ics,
+                    ]
+                );
+                $auditMeta['ics_method'] = $method;
+            }
+            if (!$sendResult['ok']) {
+                return ['ok' => false, 'error' => (string)$sendResult['error']];
+            }
+            if (!empty($sendResult['skipped'])) {
+                return ['ok' => true, 'skipped' => true];
+            }
+
+            audit_log('mail_' . $event, 'reservation', (int)$reservation['id'], $auditMeta);
+            return ['ok' => true];
+        };
+
         if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (!csrf_check($_POST['_csrf'] ?? null)) {
                 flash('error', 'Ungültiger Request.');
@@ -1052,6 +1253,13 @@ switch ($page) {
                     $stmt->execute([$aircraftId, $userId, $start, $end, $hours, $notes, (int)current_user()['id']]);
                     $newId = (int)db()->lastInsertId();
                     audit_log('create', 'reservation', $newId, ['hours' => $hours]);
+                    $mailData = $reservationMailDataById($newId);
+                    if ($mailData) {
+                        $mailResult = $sendReservationMail($mailData, 'create');
+                        if (!$mailResult['ok']) {
+                            flash('error', 'Reservierung erstellt, E-Mail fehlgeschlagen: ' . (string)$mailResult['error']);
+                        }
+                    }
                     flash('success', 'Reservierung erstellt.');
                 }
             }
@@ -1135,6 +1343,13 @@ switch ($page) {
                 $updateStmt = db()->prepare('UPDATE reservations SET aircraft_id = ?, user_id = ?, starts_at = ?, ends_at = ?, hours = ?, notes = ? WHERE id = ?');
                 $updateStmt->execute([$aircraftId, $userId, date('Y-m-d H:i:s', $startTs), date('Y-m-d H:i:s', $endTs), $hours, $notes, $reservationId]);
                 audit_log('update', 'reservation', $reservationId, ['hours' => $hours]);
+                $mailData = $reservationMailDataById($reservationId);
+                if ($mailData) {
+                    $mailResult = $sendReservationMail($mailData, 'update');
+                    if (!$mailResult['ok']) {
+                        flash('error', 'Reservierung aktualisiert, E-Mail fehlgeschlagen: ' . (string)$mailResult['error']);
+                    }
+                }
                 flash('success', 'Reservierung aktualisiert.');
             }
 
@@ -1157,9 +1372,16 @@ switch ($page) {
                     exit;
                 }
 
+                $mailData = $reservationMailDataById($reservationId);
                 db()->prepare("UPDATE reservations SET status = 'cancelled', cancelled_by = ? WHERE id = ?")
                     ->execute([(int)current_user()['id'], $reservationId]);
                 audit_log('cancel', 'reservation', $reservationId);
+                if ($mailData) {
+                    $mailResult = $sendReservationMail($mailData, 'cancel');
+                    if (!$mailResult['ok']) {
+                        flash('error', 'Reservierung gelöscht, E-Mail fehlgeschlagen: ' . (string)$mailResult['error']);
+                    }
+                }
                 flash('success', 'Reservierung gelöscht.');
             }
 

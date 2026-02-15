@@ -1,0 +1,1 @@
+{issuer.name}: Reservierung geändert {reservation.aircraft} {reservation.start}-{reservation.end}

@@ -6,6 +6,9 @@ Klassische PHP/MySQL-Reservations- und Abrechnungssoftware für eine Flugsportgr
 - Login mit Mehrfachrollen: `admin`, `pilot`, `accounting`
 - Benutzerverwaltung (Admin): Benutzer anlegen, mehrere Rollen vergeben, aktiv/deaktiviert, Passwort setzen
 - Reservierungen pro Flugzeug (anlegen, bearbeiten, löschen) inkl. Durchführung
+- Reservierungs-Benachrichtigungen per E-Mail an den Pilot:
+  - bei Neu und Änderung mit ICS-Anhang (Kalenderimport)
+  - bei Storno ohne ICS-Anhang
 - Durchführung erfassen mit mehreren Flügen pro Reservierung (Pilot, Von/Nach, Zeiten, Hobbs)
 - Flugzeugverwaltung (Immatrikulation, Typ, Status, Basispreis)
 - Preisverwaltung je Pilot und Flugzeug (`aircraft_user_rates`)
@@ -85,6 +88,7 @@ In `public/Config.php`:
 - Wenn `user`/`pass` leer sind: Versand ohne SMTP-Authentifizierung.
 - Wenn `user`/`pass` gesetzt sind: Versand mit `AUTH LOGIN`.
 - Wenn `enabled = false`: Es werden keine E-Mails versendet.
+- Reservierungs-Mails und Rechnungs-Mails nutzen denselben SMTP-Block.
 
 ## Mail-Templates
 Editierbare Dateien im Dateisystem:
@@ -97,6 +101,15 @@ Editierbare Dateien im Dateisystem:
 - Zahlungserinnerung:
   - `public/templates/mail_invoice_reminder_subject.txt`
   - `public/templates/mail_invoice_reminder_body.txt`
+- Reservierung neu:
+  - `public/templates/mail_reservation_subject.txt`
+  - `public/templates/mail_reservation_body.txt`
+- Reservierung geändert:
+  - `public/templates/mail_reservation_update_subject.txt`
+  - `public/templates/mail_reservation_update_body.txt`
+- Reservierung storniert:
+  - `public/templates/mail_reservation_cancel_subject.txt`
+  - `public/templates/mail_reservation_cancel_body.txt`
 
 Verfügbare Platzhalter sind in `variables.md` dokumentiert.
 
@@ -108,8 +121,3 @@ Verfügbare Platzhalter sind in `variables.md` dokumentiert.
 - `public/app/layout.php`: globales Layout
 - `public/app/views/*`: Seiten
 - `sql/schema.sql`: Datenbankmodell + Seed
-
-
-## ToDo
-- E-Mail bei Reservation mit ICS Datei 
-- E-Mail bei Storno
