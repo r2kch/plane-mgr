@@ -77,7 +77,6 @@
       <option value="unpaid" <?= ($invoiceStatusFilter ?? 'unpaid') === 'unpaid' ? 'selected' : '' ?>>Nicht bezahlt</option>
       <option value="all" <?= ($invoiceStatusFilter ?? 'unpaid') === 'all' ? 'selected' : '' ?>>Alle</option>
       <option value="open" <?= ($invoiceStatusFilter ?? 'unpaid') === 'open' ? 'selected' : '' ?>>Offen</option>
-      <option value="part_paid" <?= ($invoiceStatusFilter ?? 'unpaid') === 'part_paid' ? 'selected' : '' ?>>Teilbezahlt</option>
       <option value="overdue" <?= ($invoiceStatusFilter ?? 'unpaid') === 'overdue' ? 'selected' : '' ?>>Überfällig</option>
       <option value="paid" <?= ($invoiceStatusFilter ?? 'unpaid') === 'paid' ? 'selected' : '' ?>>Bezahlt</option>
     </select>
@@ -109,7 +108,7 @@
                 <input type="hidden" name="action" value="status">
                 <input type="hidden" name="invoice_id" value="<?= (int)$i['id'] ?>">
                 <select name="payment_status">
-                  <?php foreach (['open' => 'Offen', 'part_paid' => 'Teilbezahlt', 'paid' => 'Bezahlt', 'overdue' => 'Überfällig'] as $value => $label): ?>
+                  <?php foreach (['open' => 'Offen', 'paid' => 'Bezahlt', 'overdue' => 'Überfällig'] as $value => $label): ?>
                     <option value="<?= h($value) ?>" <?= $i['payment_status'] === $value ? 'selected' : '' ?>><?= h($label) ?></option>
                   <?php endforeach; ?>
                 </select>

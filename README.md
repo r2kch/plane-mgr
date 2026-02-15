@@ -41,9 +41,9 @@ Klassische PHP/MySQL-Reservations- und Abrechnungssoftware für eine Flugsportgr
 - Root Passwort: `rootpass`
 - Das Schema wird beim ersten Start automatisch aus `sql/schema.sql` importiert.
 
-## Hinweise
-- Für echtes PDF in Produktion `dompdf/dompdf` oder `mpdf/mpdf` ergänzen und `invoice_pdf` als Download ausgeben.
-- Optional: Für robusten SMTP-Versand `PHPMailer` ergänzen (Host, Port, User, Passwort aus `public/Config.php`).
+## ToDo
+- PDF Rechnung
+- Rechnungsversand (SMTP)
 - Cronjobs sind aktuell nicht erforderlich. Mail-Queue/Mahnläufe können später ergänzt werden.
 
 ## Module-Schalter (global)

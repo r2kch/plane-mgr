@@ -72,6 +72,12 @@ function db(): PDO
     $pdo->exec('ALTER TABLE users ADD COLUMN IF NOT EXISTS city VARCHAR(100) NULL AFTER postal_code');
     $pdo->exec("ALTER TABLE users ADD COLUMN IF NOT EXISTS country_code CHAR(2) NOT NULL DEFAULT 'CH' AFTER city");
     $pdo->exec('ALTER TABLE users ADD COLUMN IF NOT EXISTS phone VARCHAR(50) NULL AFTER country_code');
+    $pdo->exec('ALTER TABLE invoice_items ADD COLUMN IF NOT EXISTS flight_date DATE NULL AFTER reservation_id');
+    $pdo->exec('ALTER TABLE invoice_items ADD COLUMN IF NOT EXISTS aircraft_type VARCHAR(100) NULL AFTER flight_date');
+    $pdo->exec('ALTER TABLE invoice_items ADD COLUMN IF NOT EXISTS aircraft_immatriculation VARCHAR(30) NULL AFTER aircraft_type');
+    $pdo->exec('ALTER TABLE invoice_items ADD COLUMN IF NOT EXISTS from_airfield VARCHAR(10) NULL AFTER aircraft_immatriculation');
+    $pdo->exec('ALTER TABLE invoice_items ADD COLUMN IF NOT EXISTS to_airfield VARCHAR(10) NULL AFTER from_airfield');
+    $pdo->exec("UPDATE invoices SET payment_status = 'open' WHERE payment_status = 'part_paid'");
 
     $fkStmt = $pdo->query("SELECT COUNT(*) FROM information_schema.TABLE_CONSTRAINTS
         WHERE CONSTRAINT_SCHEMA = DATABASE()

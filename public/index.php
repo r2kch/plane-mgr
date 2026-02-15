@@ -134,7 +134,7 @@ switch ($page) {
 
         if ($showBillingModule) {
             $dashboardUserId = (int)current_user()['id'];
-            $invoiceCountStmt = db()->prepare("SELECT COUNT(*) FROM invoices WHERE user_id = ? AND payment_status IN ('open', 'part_paid', 'overdue')");
+            $invoiceCountStmt = db()->prepare("SELECT COUNT(*) FROM invoices WHERE user_id = ? AND payment_status IN ('open', 'overdue')");
             $invoiceCountStmt->execute([$dashboardUserId]);
             $counts['invoices_open'] = (int)$invoiceCountStmt->fetchColumn();
         }
@@ -312,7 +312,8 @@ switch ($page) {
         }
 
         $aircraft = db()->query('SELECT * FROM aircraft ORDER BY immatriculation')->fetchAll();
-        render('Flugzeuge', 'aircraft', compact('aircraft', 'openAircraftId', 'showNewAircraftForm'));
+        $vatEnabled = (bool)config('invoice.vat.enabled', false);
+        render('Flugzeuge', 'aircraft', compact('aircraft', 'openAircraftId', 'showNewAircraftForm', 'vatEnabled'));
         break;
 
     case 'groups':
@@ -1532,6 +1533,158 @@ switch ($page) {
 
     case 'invoices':
         require_role('admin', 'accounting');
+        $nextInvoiceNumberForYear = static function (int $year): string {
+            $prefix = 'R' . $year . '-';
+            $stmt = db()->prepare("SELECT COALESCE(MAX(CAST(SUBSTRING(invoice_number, 7) AS UNSIGNED)), 0)
+                FROM invoices
+                WHERE invoice_number LIKE ?");
+            $stmt->execute([$prefix . '%']);
+            $next = ((int)$stmt->fetchColumn()) + 1;
+            return sprintf('R%d-%06d', $year, $next);
+        };
+
+        $collectBillableFlightRows = static function (int $userId, ?string $dateFrom = null, ?string $dateTo = null): array {
+            $sql = "SELECT
+                    rf.id AS flight_id,
+                    r.id AS reservation_id,
+                    r.aircraft_id,
+                    a.immatriculation,
+                    a.type AS aircraft_type,
+                    a.base_hourly_rate,
+                    rf.start_time,
+                    rf.landing_time,
+                    rf.from_airfield,
+                    rf.to_airfield,
+                    rf.hobbs_hours
+                FROM reservation_flights rf
+                JOIN reservations r ON r.id = rf.reservation_id
+                JOIN aircraft a ON a.id = r.aircraft_id
+                WHERE r.status = 'completed'
+                  AND r.invoice_id IS NULL
+                  AND rf.pilot_user_id = ?";
+            $params = [$userId];
+            if ($dateFrom !== null && $dateTo !== null) {
+                $sql .= ' AND DATE(rf.start_time) BETWEEN ? AND ?';
+                $params[] = $dateFrom;
+                $params[] = $dateTo;
+            }
+            $sql .= ' ORDER BY rf.start_time ASC, rf.id ASC';
+            $stmt = db()->prepare($sql);
+            $stmt->execute($params);
+            $rows = $stmt->fetchAll();
+
+            if ($rows !== []) {
+                return $rows;
+            }
+
+            $fallbackSql = "SELECT
+                    NULL AS flight_id,
+                    r.id AS reservation_id,
+                    r.aircraft_id,
+                    a.immatriculation,
+                    a.type AS aircraft_type,
+                    a.base_hourly_rate,
+                    r.starts_at AS start_time,
+                    r.ends_at AS landing_time,
+                    '' AS from_airfield,
+                    '' AS to_airfield,
+                    r.hours AS hobbs_hours
+                FROM reservations r
+                JOIN aircraft a ON a.id = r.aircraft_id
+                WHERE r.status = 'completed'
+                  AND r.invoice_id IS NULL
+                  AND r.user_id = ?
+                  AND NOT EXISTS (SELECT 1 FROM reservation_flights rf WHERE rf.reservation_id = r.id)";
+            $fallbackParams = [$userId];
+            if ($dateFrom !== null && $dateTo !== null) {
+                $fallbackSql .= ' AND DATE(r.starts_at) BETWEEN ? AND ?';
+                $fallbackParams[] = $dateFrom;
+                $fallbackParams[] = $dateTo;
+            }
+            $fallbackSql .= ' ORDER BY r.starts_at ASC, r.id ASC';
+            $fallbackStmt = db()->prepare($fallbackSql);
+            $fallbackStmt->execute($fallbackParams);
+            return $fallbackStmt->fetchAll();
+        };
+
+        $createInvoiceForUser = static function (int $userId, ?string $dateFrom = null, ?string $dateTo = null) use ($nextInvoiceNumberForYear, $collectBillableFlightRows): array {
+            $rows = $collectBillableFlightRows($userId, $dateFrom, $dateTo);
+            if ($rows === []) {
+                return ['ok' => false, 'message' => 'Keine abrechenbaren Flüge gefunden.'];
+            }
+
+            $periodFrom = date('Y-m-d', strtotime((string)$rows[0]['start_time']));
+            $periodTo = date('Y-m-d', strtotime((string)$rows[count($rows) - 1]['landing_time']));
+            $lastFlightYear = (int)date('Y', strtotime((string)$rows[count($rows) - 1]['landing_time']));
+            $invoiceNumber = $nextInvoiceNumberForYear($lastFlightYear);
+
+            db()->beginTransaction();
+            try {
+                $stmt = db()->prepare('INSERT INTO invoices (invoice_number, user_id, period_from, period_to, created_by) VALUES (?, ?, ?, ?, ?)');
+                $stmt->execute([$invoiceNumber, $userId, $periodFrom, $periodTo, (int)current_user()['id']]);
+                $invoiceId = (int)db()->lastInsertId();
+
+                $total = 0.0;
+                $itemStmt = db()->prepare('INSERT INTO invoice_items (invoice_id, reservation_id, flight_date, aircraft_type, aircraft_immatriculation, from_airfield, to_airfield, description, hours, unit_price, line_total) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
+
+                $reservationIds = [];
+                foreach ($rows as $row) {
+                    $reservationId = (int)$row['reservation_id'];
+                    $reservationIds[$reservationId] = true;
+
+                    $hours = round((float)$row['hobbs_hours'], 2);
+                    $rate = user_rate_for_aircraft($userId, (int)$row['aircraft_id']) ?? (float)$row['base_hourly_rate'];
+                    $lineTotal = round($hours * $rate, 2);
+                    $total += $lineTotal;
+
+                    $fromAirfield = strtoupper(trim((string)($row['from_airfield'] ?? '')));
+                    $toAirfield = strtoupper(trim((string)($row['to_airfield'] ?? '')));
+                    $route = trim($fromAirfield . ($fromAirfield !== '' || $toAirfield !== '' ? ' - ' : '') . $toAirfield);
+                    $description = trim(sprintf(
+                        '%s | %s %s',
+                        date('d.m.Y', strtotime((string)$row['start_time'])),
+                        (string)$row['immatriculation'],
+                        $route
+                    ));
+
+                    $itemStmt->execute([
+                        $invoiceId,
+                        $reservationId,
+                        date('Y-m-d', strtotime((string)$row['start_time'])),
+                        (string)$row['aircraft_type'],
+                        (string)$row['immatriculation'],
+                        $fromAirfield,
+                        $toAirfield,
+                        $description,
+                        $hours,
+                        $rate,
+                        $lineTotal,
+                    ]);
+                }
+
+                if ($reservationIds !== []) {
+                    $resStmt = db()->prepare('UPDATE reservations SET invoice_id = ? WHERE id = ?');
+                    foreach (array_keys($reservationIds) as $reservationId) {
+                        $resStmt->execute([$invoiceId, (int)$reservationId]);
+                    }
+                }
+
+                $vatEnabled = (bool)config('invoice.vat.enabled', false);
+                $vatPercent = (float)config('invoice.vat.rate_percent', 0);
+                $vatAmount = $vatEnabled ? round($total * ($vatPercent / 100), 2) : 0.0;
+                $grossTotal = round($total + $vatAmount, 2);
+                db()->prepare('UPDATE invoices SET total_amount = ? WHERE id = ?')->execute([$grossTotal, $invoiceId]);
+                db()->commit();
+
+                audit_log('create', 'invoice', $invoiceId, ['invoice_number' => $invoiceNumber, 'rows' => count($rows), 'net' => round($total, 2), 'vat' => $vatAmount, 'gross' => $grossTotal]);
+                return ['ok' => true, 'invoice_number' => $invoiceNumber, 'invoice_id' => $invoiceId];
+            } catch (Throwable $e) {
+                if (db()->inTransaction()) {
+                    db()->rollBack();
+                }
+                return ['ok' => false, 'message' => 'Rechnung konnte nicht erstellt werden.'];
+            }
+        };
 
         if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (!csrf_check($_POST['_csrf'] ?? null)) {
@@ -1547,58 +1700,11 @@ switch ($page) {
                 $period = (string)$_POST['period'];
                 $from = date('Y-m-01', strtotime($period . '-01'));
                 $to = date('Y-m-t', strtotime($period . '-01'));
-
-                $stmt = db()->prepare("SELECT r.id,
-                        COALESCE(SUM(rf.hobbs_hours), r.hours) AS billable_hours,
-                        r.aircraft_id, a.immatriculation, a.base_hourly_rate
-                    FROM reservations r
-                    JOIN aircraft a ON a.id = r.aircraft_id
-                    LEFT JOIN reservation_flights rf ON rf.reservation_id = r.id
-                    WHERE r.user_id = ?
-                      AND r.status = 'completed'
-                      AND r.invoice_id IS NULL
-                      AND DATE(r.starts_at) BETWEEN ? AND ?
-                    GROUP BY r.id, r.hours, r.aircraft_id, a.immatriculation, a.base_hourly_rate");
-                $stmt->execute([$userId, $from, $to]);
-                $rows = $stmt->fetchAll();
-
-                if (!$rows) {
-                    flash('error', 'Keine abrechenbaren Flüge für Zeitraum.');
-                    header('Location: index.php?page=invoices');
-                    exit;
-                }
-
-                $invoiceNumber = 'R' . date('Y') . '-' . strtoupper(bin2hex(random_bytes(3)));
-
-                db()->beginTransaction();
-                try {
-                    $stmt = db()->prepare('INSERT INTO invoices (invoice_number, user_id, period_from, period_to, created_by) VALUES (?, ?, ?, ?, ?)');
-                    $stmt->execute([$invoiceNumber, $userId, $from, $to, (int)current_user()['id']]);
-                    $invoiceId = (int)db()->lastInsertId();
-
-                    $total = 0.0;
-                    $itemStmt = db()->prepare('INSERT INTO invoice_items (invoice_id, reservation_id, description, hours, unit_price, line_total) VALUES (?, ?, ?, ?, ?, ?)');
-                    $resStmt = db()->prepare('UPDATE reservations SET invoice_id = ? WHERE id = ?');
-
-                    foreach ($rows as $row) {
-                        $rate = user_rate_for_aircraft($userId, (int)$row['aircraft_id']) ?? (float)$row['base_hourly_rate'];
-                        $billableHours = (float)$row['billable_hours'];
-                        $lineTotal = round($billableHours * $rate, 2);
-                        $total += $lineTotal;
-
-                        $desc = sprintf('Flug %s (%s h Hobbs)', $row['immatriculation'], number_format($billableHours, 2, '.', ''));
-                        $itemStmt->execute([$invoiceId, (int)$row['id'], $desc, $billableHours, $rate, $lineTotal]);
-                        $resStmt->execute([$invoiceId, (int)$row['id']]);
-                    }
-
-                    db()->prepare('UPDATE invoices SET total_amount = ? WHERE id = ?')->execute([round($total, 2), $invoiceId]);
-                    db()->commit();
-
-                    audit_log('create', 'invoice', $invoiceId, ['invoice_number' => $invoiceNumber]);
-                    flash('success', 'Rechnung erstellt: ' . $invoiceNumber);
-                } catch (Throwable $e) {
-                    db()->rollBack();
-                    flash('error', 'Rechnung konnte nicht erstellt werden.');
+                $result = $createInvoiceForUser($userId, $from, $to);
+                if ($result['ok']) {
+                    flash('success', 'Rechnung erstellt: ' . $result['invoice_number']);
+                } else {
+                    flash('error', (string)$result['message']);
                 }
             }
 
@@ -1609,67 +1715,22 @@ switch ($page) {
                     header('Location: index.php?page=invoices');
                     exit;
                 }
-
-                $stmt = db()->prepare("SELECT r.id,
-                        COALESCE(SUM(rf.hobbs_hours), r.hours) AS billable_hours,
-                        r.aircraft_id, a.immatriculation, a.base_hourly_rate,
-                        DATE(r.starts_at) AS start_date
-                    FROM reservations r
-                    JOIN aircraft a ON a.id = r.aircraft_id
-                    LEFT JOIN reservation_flights rf ON rf.reservation_id = r.id
-                    WHERE r.user_id = ?
-                      AND r.status = 'completed'
-                      AND r.invoice_id IS NULL
-                    GROUP BY r.id, r.hours, r.aircraft_id, a.immatriculation, a.base_hourly_rate, DATE(r.starts_at)
-                    ORDER BY r.starts_at ASC");
-                $stmt->execute([$userId]);
-                $rows = $stmt->fetchAll();
-
-                if (!$rows) {
-                    flash('error', 'Keine offenen Stunden für diesen Pilot.');
-                    header('Location: index.php?page=invoices');
-                    exit;
-                }
-
-                $periodFrom = (string)$rows[0]['start_date'];
-                $periodTo = (string)$rows[count($rows) - 1]['start_date'];
-                $invoiceNumber = 'R' . date('Y') . '-' . strtoupper(bin2hex(random_bytes(3)));
-
-                db()->beginTransaction();
-                try {
-                    $stmt = db()->prepare('INSERT INTO invoices (invoice_number, user_id, period_from, period_to, created_by) VALUES (?, ?, ?, ?, ?)');
-                    $stmt->execute([$invoiceNumber, $userId, $periodFrom, $periodTo, (int)current_user()['id']]);
-                    $invoiceId = (int)db()->lastInsertId();
-
-                    $total = 0.0;
-                    $itemStmt = db()->prepare('INSERT INTO invoice_items (invoice_id, reservation_id, description, hours, unit_price, line_total) VALUES (?, ?, ?, ?, ?, ?)');
-                    $resStmt = db()->prepare('UPDATE reservations SET invoice_id = ? WHERE id = ?');
-
-                    foreach ($rows as $row) {
-                        $rate = user_rate_for_aircraft($userId, (int)$row['aircraft_id']) ?? (float)$row['base_hourly_rate'];
-                        $billableHours = (float)$row['billable_hours'];
-                        $lineTotal = round($billableHours * $rate, 2);
-                        $total += $lineTotal;
-
-                        $desc = sprintf('Flug %s (%s h Hobbs)', $row['immatriculation'], number_format($billableHours, 2, '.', ''));
-                        $itemStmt->execute([$invoiceId, (int)$row['id'], $desc, $billableHours, $rate, $lineTotal]);
-                        $resStmt->execute([$invoiceId, (int)$row['id']]);
-                    }
-
-                    db()->prepare('UPDATE invoices SET total_amount = ? WHERE id = ?')->execute([round($total, 2), $invoiceId]);
-                    db()->commit();
-
-                    audit_log('create', 'invoice', $invoiceId, ['invoice_number' => $invoiceNumber, 'source' => 'open_pilot']);
-                    flash('success', 'Rechnung erstellt: ' . $invoiceNumber);
-                } catch (Throwable $e) {
-                    db()->rollBack();
-                    flash('error', 'Rechnung konnte nicht erstellt werden.');
+                $result = $createInvoiceForUser($userId);
+                if ($result['ok']) {
+                    flash('success', 'Rechnung erstellt: ' . $result['invoice_number']);
+                } else {
+                    flash('error', (string)$result['message']);
                 }
             }
 
             if ($action === 'status') {
                 $invoiceId = (int)$_POST['invoice_id'];
                 $status = (string)$_POST['payment_status'];
+                if (!in_array($status, ['open', 'paid', 'overdue'], true)) {
+                    flash('error', 'Ungültiger Zahlungsstatus.');
+                    header('Location: index.php?page=invoices');
+                    exit;
+                }
                 db()->prepare('UPDATE invoices SET payment_status = ? WHERE id = ?')->execute([$status, $invoiceId]);
                 audit_log('status_change', 'invoice', $invoiceId, ['status' => $status]);
                 flash('success', 'Zahlungsstatus aktualisiert.');
@@ -1749,7 +1810,7 @@ switch ($page) {
 
         $invoiceStatusFilter = (string)($_GET['invoice_status'] ?? 'unpaid');
         $invoiceSearch = trim((string)($_GET['invoice_q'] ?? ''));
-        $allowedInvoiceFilters = ['unpaid', 'all', 'open', 'part_paid', 'overdue', 'paid'];
+        $allowedInvoiceFilters = ['unpaid', 'all', 'open', 'overdue', 'paid'];
         if (!in_array($invoiceStatusFilter, $allowedInvoiceFilters, true)) {
             $invoiceStatusFilter = 'unpaid';
         }
@@ -1761,7 +1822,7 @@ switch ($page) {
         $invoiceParams = [];
 
         if ($invoiceStatusFilter === 'unpaid') {
-            $invoiceSql .= " AND i.payment_status IN ('open', 'part_paid', 'overdue')";
+            $invoiceSql .= " AND i.payment_status IN ('open', 'overdue')";
         } elseif ($invoiceStatusFilter !== 'all') {
             $invoiceSql .= ' AND i.payment_status = ?';
             $invoiceParams[] = $invoiceStatusFilter;
@@ -2005,7 +2066,8 @@ switch ($page) {
         require_role('admin', 'accounting');
         $invoiceId = (int)($_GET['id'] ?? 0);
 
-        $stmt = db()->prepare('SELECT i.*, CONCAT(u.first_name, " ", u.last_name) AS customer_name, u.email
+        $stmt = db()->prepare('SELECT i.*, CONCAT(u.first_name, " ", u.last_name) AS customer_name, u.email,
+                u.street, u.house_number, u.postal_code, u.city, u.country_code, u.phone
             FROM invoices i
             JOIN users u ON u.id = i.user_id
             WHERE i.id = ?');
@@ -2017,11 +2079,59 @@ switch ($page) {
             exit('Rechnung nicht gefunden.');
         }
 
-        $itemsStmt = db()->prepare('SELECT * FROM invoice_items WHERE invoice_id = ? ORDER BY id');
+        $itemsStmt = db()->prepare('SELECT * FROM invoice_items WHERE invoice_id = ? ORDER BY flight_date ASC, id ASC');
         $itemsStmt->execute([$invoiceId]);
         $items = $itemsStmt->fetchAll();
 
-        render('Rechnung ' . $invoice['invoice_number'], 'invoice_pdf', compact('invoice', 'items'));
+        $countryOptions = european_countries();
+        $issuer = [
+            'name' => (string)config('invoice.issuer.name', ''),
+            'street' => (string)config('invoice.issuer.street', ''),
+            'house_number' => (string)config('invoice.issuer.house_number', ''),
+            'postal_code' => (string)config('invoice.issuer.postal_code', ''),
+            'city' => (string)config('invoice.issuer.city', ''),
+            'country' => (string)config('invoice.issuer.country', 'Schweiz'),
+            'email' => (string)config('invoice.issuer.email', ''),
+            'phone' => (string)config('invoice.issuer.phone', ''),
+            'website' => (string)config('invoice.issuer.website', ''),
+        ];
+        $bank = [
+            'recipient' => (string)config('invoice.bank.recipient', ''),
+            'iban' => (string)config('invoice.bank.iban', ''),
+            'bic' => (string)config('invoice.bank.bic', ''),
+            'bank_name' => (string)config('invoice.bank.bank_name', ''),
+            'bank_address' => (string)config('invoice.bank.bank_address', ''),
+        ];
+        $vat = [
+            'enabled' => (bool)config('invoice.vat.enabled', false),
+            'rate_percent' => (float)config('invoice.vat.rate_percent', 0),
+            'uid' => (string)config('invoice.vat.uid', ''),
+        ];
+
+        $invoiceMeta = [
+            'title' => (string)config('invoice.title', 'Rechnung'),
+            'currency' => (string)config('invoice.currency', 'CHF'),
+            'payment_target_days' => (int)config('invoice.payment_target_days', 30),
+            'due_date' => date('d.m.Y', strtotime((string)$invoice['created_at'] . ' +' . (int)config('invoice.payment_target_days', 30) . ' days')),
+        ];
+
+        $logoPathConfig = trim((string)config('invoice.logo_path', 'logo.png'));
+        $logoFilesystemPath = __DIR__ . '/' . ltrim($logoPathConfig, '/');
+        $logoPublicPath = is_file($logoFilesystemPath) ? $logoPathConfig : '';
+
+        $customerAddress = [
+            'name' => (string)$invoice['customer_name'],
+            'street_line' => trim((string)$invoice['street'] . ' ' . (string)$invoice['house_number']),
+            'city_line' => trim((string)$invoice['postal_code'] . ' ' . (string)$invoice['city']),
+            'country' => $countryOptions[(string)$invoice['country_code']] ?? (string)$invoice['country_code'],
+            'email' => (string)$invoice['email'],
+            'phone' => (string)($invoice['phone'] ?? ''),
+        ];
+
+        $viewData = compact('invoice', 'items', 'issuer', 'bank', 'vat', 'invoiceMeta', 'logoPublicPath', 'customerAddress');
+        extract($viewData, EXTR_SKIP);
+        include __DIR__ . '/app/views/invoice_pdf.php';
+        exit;
         break;
 
     case 'my_invoices':
@@ -2030,7 +2140,7 @@ switch ($page) {
         $openStmt = db()->prepare("SELECT *
             FROM invoices
             WHERE user_id = ?
-              AND payment_status IN ('open', 'part_paid', 'overdue')
+              AND payment_status IN ('open', 'overdue')
             ORDER BY created_at DESC");
         $openStmt->execute([$userId]);
         $openInvoices = $openStmt->fetchAll();

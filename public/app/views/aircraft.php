@@ -1,4 +1,9 @@
 <h2>Flugzeuge</h2>
+<?php if (!($vatEnabled ?? false)): ?>
+  <div class="flash flash-error">Mehrwertsteuer durch Admin deaktiviert.</div>
+<?php else: ?>
+  <div class="flash flash-success">Mehrwertsteuer wird auf diesen Stundenpreis hinzugefügt.</div>
+<?php endif; ?>
 <?php
   $formatHobbsClock = static function (float $value): string {
     $hours = (int)floor($value);
