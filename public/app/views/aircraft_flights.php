@@ -1,5 +1,5 @@
 <h2>Durchgeführte Flüge: <?= h($aircraft['immatriculation']) ?> (<?= h($aircraft['type']) ?>)</h2>
-<p><a href="index.php?page=aircraft">Zurück zu Flugzeuge</a></p>
+<p><a href="index.php?page=<?= h((string)($backPage ?? 'aircraft')) ?>">Zurück</a></p>
 
 <div class="table-wrap">
   <table class="entries-table">
@@ -14,6 +14,7 @@
         <th>Hobbs von</th>
         <th>Hobbs bis</th>
         <th>Hobbs h</th>
+        <th>Verrechenbar</th>
         <th>Reservierung</th>
         <th>Aktion</th>
       </tr>
@@ -37,6 +38,13 @@
             <td><input form="edit-flight-<?= (int)$f['id'] ?>" name="hobbs_start" pattern="^[0-9]+:[0-5][0-9]$" value="<?= h($f['hobbs_start_clock']) ?>" required></td>
             <td><input form="edit-flight-<?= (int)$f['id'] ?>" name="hobbs_end" pattern="^[0-9]+:[0-5][0-9]$" value="<?= h($f['hobbs_end_clock']) ?>" required></td>
             <td><?= number_format((float)$f['hobbs_hours'], 2, '.', '') ?></td>
+            <td>
+              <?php if ((int)($f['is_billable'] ?? 1) === 1): ?>
+                <span class="status-chip open">Ja</span>
+              <?php else: ?>
+                <span class="status-chip cancelled">Nein</span>
+              <?php endif; ?>
+            </td>
             <td>#<?= (int)$f['reservation_id'] ?></td>
             <td>
               <div class="inline-form">
@@ -61,10 +69,26 @@
             <td><?= h($f['hobbs_start_clock']) ?></td>
             <td><?= h($f['hobbs_end_clock']) ?></td>
             <td><?= number_format((float)$f['hobbs_hours'], 2, '.', '') ?></td>
+            <td>
+              <?php if ((int)($f['is_billable'] ?? 1) === 1): ?>
+                <span class="status-chip open">Ja</span>
+              <?php else: ?>
+                <span class="status-chip cancelled">Nein</span>
+              <?php endif; ?>
+            </td>
             <td>#<?= (int)$f['reservation_id'] ?></td>
             <td>
               <div class="inline-form">
                 <a class="btn-small" href="index.php?page=aircraft_flights&aircraft_id=<?= (int)$aircraft['id'] ?>&edit_id=<?= (int)$f['id'] ?>">Bearbeiten</a>
+                <form method="post" class="inline-form">
+                  <input type="hidden" name="_csrf" value="<?= h(csrf_token()) ?>">
+                  <input type="hidden" name="action" value="toggle_billable">
+                  <input type="hidden" name="flight_id" value="<?= (int)$f['id'] ?>">
+                  <input type="hidden" name="is_billable" value="<?= (int)($f['is_billable'] ?? 1) === 1 ? '0' : '1' ?>">
+                  <button type="submit" class="btn-small<?= (int)($f['is_billable'] ?? 1) === 1 ? ' btn-danger-solid' : '' ?>">
+                    <?= (int)($f['is_billable'] ?? 1) === 1 ? 'Nicht verrechenbar' : 'Verrechenbar machen' ?>
+                  </button>
+                </form>
                 <form method="post" class="inline-form" onsubmit="return confirm('Eintrag wirklich löschen?');">
                   <input type="hidden" name="_csrf" value="<?= h(csrf_token()) ?>">
                   <input type="hidden" name="action" value="delete_flight">

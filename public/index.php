@@ -16,6 +16,7 @@ $modulePages = [
     'reservations' => 'reservations',
     'my_invoices' => 'billing',
     'accounting' => 'billing',
+    'accounting_flights' => 'billing',
     'rates' => 'billing',
     'invoices' => 'billing',
     'invoice_html' => 'billing',
@@ -176,6 +177,14 @@ switch ($page) {
     case 'accounting':
         require_role('admin', 'accounting');
         render('Buchhaltung', 'accounting');
+        break;
+
+    case 'accounting_flights':
+        require_role('admin', 'accounting');
+        $aircraft = db()->query("SELECT id, immatriculation, type, status
+            FROM aircraft
+            ORDER BY immatriculation ASC")->fetchAll();
+        render('Flüge', 'accounting_flights', compact('aircraft'));
         break;
 
     case 'aircraft':
@@ -416,7 +425,7 @@ switch ($page) {
         break;
 
     case 'aircraft_flights':
-        require_role('admin');
+        require_role('admin', 'accounting');
         $aircraftId = (int)($_GET['aircraft_id'] ?? 0);
         if ($aircraftId <= 0) {
             http_response_code(404);
@@ -468,7 +477,7 @@ switch ($page) {
             $action = (string)($_POST['action'] ?? '');
             $flightId = (int)($_POST['flight_id'] ?? 0);
 
-            $flightOwnerStmt = db()->prepare("SELECT rf.id, rf.reservation_id
+            $flightOwnerStmt = db()->prepare("SELECT rf.id, rf.reservation_id, rf.is_billable
                 FROM reservation_flights rf
                 JOIN reservations r ON r.id = rf.reservation_id
                 WHERE rf.id = ? AND r.aircraft_id = ?");
@@ -488,6 +497,20 @@ switch ($page) {
                 $recalcReservationHours($reservationId);
                 audit_log('delete', 'reservation_flight', $flightId, ['reservation_id' => $reservationId]);
                 flash('success', 'Flug gelöscht.');
+                header('Location: index.php?page=aircraft_flights&aircraft_id=' . $aircraftId);
+                exit;
+            }
+
+            if ($action === 'toggle_billable') {
+                $newBillable = ((string)($_POST['is_billable'] ?? '1')) === '1' ? 1 : 0;
+                $oldBillable = (int)$flightOwner['is_billable'];
+                db()->prepare('UPDATE reservation_flights SET is_billable = ? WHERE id = ?')->execute([$newBillable, $flightId]);
+                audit_log('update', 'reservation_flight', $flightId, [
+                    'reservation_id' => $reservationId,
+                    'is_billable_from' => $oldBillable,
+                    'is_billable_to' => $newBillable,
+                ]);
+                flash('success', $newBillable === 1 ? 'Flug ist nun verrechenbar.' : 'Flug ist nun nicht verrechenbar.');
                 header('Location: index.php?page=aircraft_flights&aircraft_id=' . $aircraftId);
                 exit;
             }
@@ -579,8 +602,9 @@ switch ($page) {
               )
             ORDER BY u.last_name, u.first_name")->fetchAll();
         $editFlightId = (int)($_GET['edit_id'] ?? 0);
+        $backPage = has_role('admin') ? 'aircraft' : 'accounting_flights';
 
-        render('Durchgeführte Flüge', 'aircraft_flights', compact('aircraft', 'flights', 'pilots', 'editFlightId'));
+        render('Durchgeführte Flüge', 'aircraft_flights', compact('aircraft', 'flights', 'pilots', 'editFlightId', 'backPage'));
         break;
 
     case 'users':
@@ -1290,8 +1314,8 @@ switch ($page) {
                 db()->beginTransaction();
                 try {
                     $insertFlightStmt = db()->prepare('INSERT INTO reservation_flights
-                        (reservation_id, pilot_user_id, from_airfield, to_airfield, start_time, landing_time, landings_count, hobbs_start, hobbs_end, hobbs_hours)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
+                        (reservation_id, pilot_user_id, from_airfield, to_airfield, start_time, landing_time, landings_count, hobbs_start, hobbs_end, hobbs_hours, is_billable)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)');
 
                     foreach ($flights as $flight) {
                         $insertFlightStmt->execute([
@@ -1517,6 +1541,7 @@ switch ($page) {
                 JOIN aircraft a ON a.id = r.aircraft_id
                 WHERE r.status = 'completed'
                   AND r.invoice_id IS NULL
+                  AND rf.is_billable = 1
                   AND rf.pilot_user_id = ?";
             $params = [$userId];
             if ($dateFrom !== null && $dateTo !== null) {
@@ -1529,38 +1554,7 @@ switch ($page) {
             $stmt->execute($params);
             $rows = $stmt->fetchAll();
 
-            if ($rows !== []) {
-                return $rows;
-            }
-
-            $fallbackSql = "SELECT
-                    NULL AS flight_id,
-                    r.id AS reservation_id,
-                    r.aircraft_id,
-                    a.immatriculation,
-                    a.type AS aircraft_type,
-                    a.base_hourly_rate,
-                    r.starts_at AS start_time,
-                    r.ends_at AS landing_time,
-                    '' AS from_airfield,
-                    '' AS to_airfield,
-                    r.hours AS hobbs_hours
-                FROM reservations r
-                JOIN aircraft a ON a.id = r.aircraft_id
-                WHERE r.status = 'completed'
-                  AND r.invoice_id IS NULL
-                  AND r.user_id = ?
-                  AND NOT EXISTS (SELECT 1 FROM reservation_flights rf WHERE rf.reservation_id = r.id)";
-            $fallbackParams = [$userId];
-            if ($dateFrom !== null && $dateTo !== null) {
-                $fallbackSql .= ' AND DATE(r.starts_at) BETWEEN ? AND ?';
-                $fallbackParams[] = $dateFrom;
-                $fallbackParams[] = $dateTo;
-            }
-            $fallbackSql .= ' ORDER BY r.starts_at ASC, r.id ASC';
-            $fallbackStmt = db()->prepare($fallbackSql);
-            $fallbackStmt->execute($fallbackParams);
-            return $fallbackStmt->fetchAll();
+            return $rows;
         };
 
         $createInvoiceForUser = static function (int $userId, ?string $dateFrom = null, ?string $dateTo = null) use ($nextInvoiceNumberForYear, $collectBillableFlightRows): array {
@@ -1804,6 +1798,7 @@ switch ($page) {
             JOIN users p ON p.id = rf.pilot_user_id
             WHERE r.status = 'completed'
               AND r.invoice_id IS NULL
+              AND rf.is_billable = 1
             GROUP BY rf.pilot_user_id, p.first_name, p.last_name
             ORDER BY open_hours DESC, p.last_name ASC, p.first_name ASC")->fetchAll();
 
@@ -1824,6 +1819,7 @@ switch ($page) {
                 JOIN users p ON p.id = rf.pilot_user_id
                 WHERE r.status = 'completed'
                   AND r.invoice_id IS NULL
+                  AND rf.is_billable = 1
                   AND rf.pilot_user_id = ?
                 ORDER BY rf.start_time DESC, rf.id DESC");
             $pilotFlightsStmt->execute([$openPilotId]);
@@ -1927,8 +1923,8 @@ switch ($page) {
                 $reservationId = (int)db()->lastInsertId();
 
                 $flightStmt = db()->prepare("INSERT INTO reservation_flights
-                    (reservation_id, pilot_user_id, from_airfield, to_airfield, start_time, landing_time, landings_count, hobbs_start, hobbs_end, hobbs_hours)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+                    (reservation_id, pilot_user_id, from_airfield, to_airfield, start_time, landing_time, landings_count, hobbs_start, hobbs_end, hobbs_hours, is_billable)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)");
                 $flightStmt->execute([
                     $reservationId,
                     $pilotId,

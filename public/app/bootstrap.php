@@ -94,6 +94,7 @@ function db(): PDO
     $pdo->exec('ALTER TABLE aircraft ADD COLUMN IF NOT EXISTS start_hobbs DECIMAL(10,2) NOT NULL DEFAULT 0.00 AFTER status');
     $pdo->exec('ALTER TABLE aircraft ADD COLUMN IF NOT EXISTS start_landings INT NOT NULL DEFAULT 1 AFTER start_hobbs');
     $pdo->exec('ALTER TABLE reservation_flights ADD COLUMN IF NOT EXISTS landings_count INT NOT NULL DEFAULT 1 AFTER landing_time');
+    $pdo->exec('ALTER TABLE reservation_flights ADD COLUMN IF NOT EXISTS is_billable TINYINT(1) NOT NULL DEFAULT 1 AFTER hobbs_hours');
     $pdo->exec("CREATE TABLE IF NOT EXISTS aircraft_groups (
         id INT AUTO_INCREMENT PRIMARY KEY,
         name VARCHAR(100) NOT NULL UNIQUE,
@@ -119,6 +120,7 @@ function db(): PDO
     $pdo->exec('ALTER TABLE invoice_items ADD COLUMN IF NOT EXISTS from_airfield VARCHAR(10) NULL AFTER aircraft_immatriculation');
     $pdo->exec('ALTER TABLE invoice_items ADD COLUMN IF NOT EXISTS to_airfield VARCHAR(10) NULL AFTER from_airfield');
     $pdo->exec("UPDATE invoices SET payment_status = 'open' WHERE payment_status = 'part_paid'");
+    $pdo->exec('UPDATE reservation_flights SET is_billable = 1 WHERE is_billable IS NULL');
 
     $fkStmt = $pdo->query("SELECT COUNT(*) FROM information_schema.TABLE_CONSTRAINTS
         WHERE CONSTRAINT_SCHEMA = DATABASE()

@@ -1,6 +1,11 @@
 <h2>Buchhaltung</h2>
 <div class="cards admin-hub-cards">
   <article class="card">
+    <h3>Flüge</h3>
+    <p>Flugzeuge öffnen und Verrechenbarkeit im Logbuch steuern.</p>
+    <a class="btn-small" href="index.php?page=accounting_flights">Öffnen</a>
+  </article>
+  <article class="card">
     <h3>Abrechnung</h3>
     <p>Offene Stunden einsehen und Rechnungen erstellen.</p>
     <a class="btn-small" href="index.php?page=invoices">Öffnen</a>

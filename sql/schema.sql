@@ -96,6 +96,7 @@ CREATE TABLE reservation_flights (
   hobbs_start DECIMAL(10,2) NOT NULL,
   hobbs_end DECIMAL(10,2) NOT NULL,
   hobbs_hours DECIMAL(10,2) NOT NULL,
+  is_billable TINYINT(1) NOT NULL DEFAULT 1,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (reservation_id) REFERENCES reservations(id) ON DELETE CASCADE,
   FOREIGN KEY (pilot_user_id) REFERENCES users(id)
