@@ -12,6 +12,6 @@
     <button type="submit">Login</button>
   </form>
   <?php if ($installationOpen): ?>
-    <p><a href="index.php?page=install">Erstinstallation (Admin anlegen)</a></p>
+    <p><a href="setup.php">Setup (Admin anlegen)</a></p>
   <?php endif; ?>
 </section>

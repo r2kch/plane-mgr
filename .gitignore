@@ -13,3 +13,8 @@ docker/db_data/
 
 # Local app config
 public/Config.php
+
+# Dependency folders (not in repository)
+/vendor/
+/public/vendor/
+/dompdf-3.1.4/

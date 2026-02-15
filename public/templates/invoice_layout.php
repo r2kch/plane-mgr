@@ -12,6 +12,7 @@ if (!empty($vat['enabled'])) {
     $vatAmount = round($netTotal * ((float)$vat['rate_percent'] / 100), 2);
 }
 $grossTotal = round($netTotal + $vatAmount, 2);
+$isPdf = (($renderMode ?? 'html') === 'pdf');
 ?>
 <!doctype html>
 <html lang="de-CH">
@@ -20,7 +21,7 @@ $grossTotal = round($netTotal + $vatAmount, 2);
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title><?= h((string)$invoiceMeta['title']) ?> <?= h((string)$invoice['invoice_number']) ?></title>
   <style>
-    @page { size: A4; margin: 14mm; }
+    @page { size: A4; margin: <?= $isPdf ? '9mm' : '14mm' ?>; }
     * { box-sizing: border-box; }
     body {
       margin: 0;
@@ -38,10 +39,18 @@ $grossTotal = round($netTotal + $vatAmount, 2);
       padding: 12mm;
     }
     .header {
-      display: grid;
-      grid-template-columns: 1.2fr 1fr;
-      gap: 14mm;
-      margin-bottom: 10mm;
+      display: table;
+      width: 100%;
+      table-layout: fixed;
+      border-collapse: separate;
+      border-spacing: 10mm 0;
+      margin: 0 -10mm 10mm -10mm;
+    }
+    .header-col {
+      display: table-cell;
+      width: 50%;
+      vertical-align: top;
+      padding: 0 10mm;
     }
     .logo {
       max-width: 220px;
@@ -69,10 +78,18 @@ $grossTotal = round($netTotal + $vatAmount, 2);
       background: #fbfdff;
     }
     .meta {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 8mm;
-      margin-bottom: 10mm;
+      display: table;
+      width: 100%;
+      table-layout: fixed;
+      border-collapse: separate;
+      border-spacing: 8mm 0;
+      margin: 0 -8mm 10mm -8mm;
+    }
+    .meta-col {
+      display: table-cell;
+      width: 50%;
+      vertical-align: top;
+      padding: 0 8mm;
     }
     .meta table {
       width: 100%;
@@ -117,22 +134,28 @@ $grossTotal = round($netTotal + $vatAmount, 2);
     }
     .totals {
       margin-left: auto;
-      width: min(360px, 100%);
+      width: 360px;
+      max-width: 100%;
       border: 1px solid #d9e0ea;
       border-radius: 10px;
-      padding: 8px 10px;
       background: #fbfdff;
+      overflow: hidden;
     }
-    .totals-row {
-      display: flex;
-      justify-content: space-between;
-      align-items: baseline;
-      padding: 4px 0;
+    .totals table {
+      width: 100%;
+      border-collapse: collapse;
     }
-    .totals-row.grand {
-      margin-top: 4px;
-      border-top: 1px solid #d9e0ea;
-      padding-top: 8px;
+    .totals td {
+      padding: 6px 10px;
+      border-bottom: 1px solid #e1e6ef;
+    }
+    .totals td:last-child {
+      text-align: right;
+      white-space: nowrap;
+      font-weight: 700;
+    }
+    .totals tr:last-child td {
+      border-bottom: 0;
       font-size: 1.1rem;
       font-weight: 700;
     }
@@ -146,6 +169,73 @@ $grossTotal = round($netTotal + $vatAmount, 2);
       margin: 0 0 6px 0;
       font-size: 1rem;
     }
+    body.mode-pdf {
+      font-size: 11px;
+      line-height: 1.25;
+    }
+    .mode-pdf .invoice-page {
+      border: 0;
+      border-radius: 0;
+      max-width: none;
+      padding: 0;
+    }
+    .mode-pdf .header {
+      border-spacing: 7mm 0;
+      margin: 0 -7mm 4mm -7mm;
+    }
+    .mode-pdf .header-col {
+      padding: 0 7mm;
+    }
+    .mode-pdf .logo {
+      max-width: 160px;
+      max-height: 48px;
+      margin-bottom: 4px;
+    }
+    .mode-pdf .title {
+      font-size: 1.5rem;
+      margin-bottom: 2px;
+    }
+    .mode-pdf .card {
+      padding: 6px 8px;
+    }
+    .mode-pdf .meta {
+      border-spacing: 5mm 0;
+      margin: 0 -5mm 4mm -5mm;
+    }
+    .mode-pdf .meta-col {
+      padding: 0 5mm;
+    }
+    .mode-pdf .meta td {
+      padding: 1px 0;
+      font-size: 0.9rem;
+    }
+    .mode-pdf .items {
+      margin-bottom: 4mm;
+      font-size: 0.84rem;
+    }
+    .mode-pdf .items th,
+    .mode-pdf .items td {
+      padding: 5px 6px;
+    }
+    .mode-pdf .totals {
+      width: 320px;
+    }
+    .mode-pdf .totals td {
+      padding: 4px 8px;
+      font-size: 0.9rem;
+    }
+    .mode-pdf .totals tr:last-child td {
+      font-size: 1rem;
+    }
+    .mode-pdf .bank {
+      margin-top: 5mm;
+      padding-top: 4mm;
+      font-size: 0.84rem;
+    }
+    .mode-pdf .bank h3 {
+      margin-bottom: 4px;
+      font-size: 0.92rem;
+    }
     @media print {
       .invoice-page {
         border: 0;
@@ -156,12 +246,12 @@ $grossTotal = round($netTotal + $vatAmount, 2);
     }
   </style>
 </head>
-<body>
+<body class="<?= $isPdf ? 'mode-pdf' : 'mode-html' ?>">
   <main class="invoice-page">
     <section class="header">
-      <div>
-        <?php if ($logoPublicPath !== ''): ?>
-          <img class="logo" src="<?= h($logoPublicPath) ?>" alt="Logo">
+      <div class="header-col">
+        <?php if (($logoSrc ?? '') !== ''): ?>
+          <img class="logo" src="<?= h((string)$logoSrc) ?>" alt="Logo">
         <?php endif; ?>
         <p class="block-title">Absender</p>
         <div class="card">
@@ -172,7 +262,7 @@ $grossTotal = round($netTotal + $vatAmount, 2);
           <?php if ((string)$issuer['email'] !== ''): ?><div>E-Mail: <?= h((string)$issuer['email']) ?></div><?php endif; ?>
         </div>
       </div>
-      <div>
+      <div class="header-col">
         <h1 class="title"><?= h((string)$invoiceMeta['title']) ?></h1>
         <div class="card">
           <div><strong><?= h((string)$invoice['invoice_number']) ?></strong></div>
@@ -191,14 +281,17 @@ $grossTotal = round($netTotal + $vatAmount, 2);
     </section>
 
     <section class="meta">
-      <div class="card">
+      <div class="meta-col">
+        <div class="card">
         <table>
                   
           <tr><td>Währung</td><td><?= h($currency) ?></td></tr>
           <tr><td>Zahlungsziel</td><td><?= (int)$invoiceMeta['payment_target_days'] ?> Tage</td></tr>
         </table>
+        </div>
       </div>
-      <div class="card">
+      <div class="meta-col">
+        <div class="card">
         <table>
           <tr><td>Zeitraum</td><td><?= h(date('d.m.Y', strtotime((string)$invoice['period_from']))) ?> - <?= h(date('d.m.Y', strtotime((string)$invoice['period_to']))) ?></td></tr>
           <tr><td>MWST</td><td><?= !empty($vat['enabled']) ? h(number_format((float)$vat['rate_percent'], 1, '.', '')) . '%' : 'Nicht anwendbar' ?></td></tr>
@@ -206,6 +299,7 @@ $grossTotal = round($netTotal + $vatAmount, 2);
             <tr><td>UID</td><td><?= h((string)$vat['uid']) ?></td></tr>
           <?php endif; ?>
         </table>
+        </div>
       </div>
     </section>
 
@@ -244,11 +338,24 @@ $grossTotal = round($netTotal + $vatAmount, 2);
     </table>
 
     <section class="totals">
-      <div class="totals-row"><span>Zwischensumme</span><strong><?= h($currency) ?> <?= h(number_format($netTotal, 2, '.', '')) ?></strong></div>
-      <?php if (!empty($vat['enabled'])): ?>
-        <div class="totals-row"><span>MWST <?= h(number_format((float)$vat['rate_percent'], 1, '.', '')) ?>%</span><strong><?= h($currency) ?> <?= h(number_format($vatAmount, 2, '.', '')) ?></strong></div>
-      <?php endif; ?>
-      <div class="totals-row grand"><span>Gesamtsumme</span><strong><?= h($currency) ?> <?= h(number_format($grossTotal, 2, '.', '')) ?></strong></div>
+      <table>
+        <tbody>
+          <tr>
+            <td>Zwischensumme</td>
+            <td><?= h($currency) ?> <?= h(number_format($netTotal, 2, '.', '')) ?></td>
+          </tr>
+          <?php if (!empty($vat['enabled'])): ?>
+            <tr>
+              <td>MWST <?= h(number_format((float)$vat['rate_percent'], 1, '.', '')) ?>%</td>
+              <td><?= h($currency) ?> <?= h(number_format($vatAmount, 2, '.', '')) ?></td>
+            </tr>
+          <?php endif; ?>
+          <tr>
+            <td>Gesamtsumme</td>
+            <td><?= h($currency) ?> <?= h(number_format($grossTotal, 2, '.', '')) ?></td>
+          </tr>
+        </tbody>
+      </table>
     </section>
 
     <section class="bank">

@@ -23,11 +23,7 @@ Klassische PHP/MySQL-Reservations- und Abrechnungssoftware für eine Flugsportgr
 
 
 ## Setup
-1. Dateien, die auf den Webserver müssen, liegen unter `public/` und werden dort deployt.
-2. `public/Config.example.php` nach `public/Config.php` kopieren und DB/SMTP eintragen.
-3. SQL aus `sql/schema.sql` in MySQL/MariaDB importieren.
-4. Browser öffnen: `index.php?page=install` und ersten Admin anlegen.
-5. Danach mit dem neuen Admin anmelden.
+siehe [DEPLOY.md](DEPLOY.md) (nur `public/` hochladen) und `public/setup.php` aufrufen
 
 
 ## Lokale Entwicklung mit Docker

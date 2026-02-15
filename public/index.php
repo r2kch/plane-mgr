@@ -18,6 +18,7 @@ $modulePages = [
     'accounting' => 'billing',
     'rates' => 'billing',
     'invoices' => 'billing',
+    'invoice_html' => 'billing',
     'invoice_pdf' => 'billing',
     'manual_flight' => 'billing',
     'audit' => 'audit',
@@ -30,56 +31,8 @@ if (isset($modulePages[$page]) && !module_enabled($modulePages[$page])) {
 
 switch ($page) {
     case 'install':
-        $hasUsers = (int)db()->query('SELECT COUNT(*) FROM users')->fetchColumn() > 0;
-        if ($hasUsers) {
-            flash('error', 'Installation bereits abgeschlossen.');
-            header('Location: index.php?page=login');
-            exit;
-        }
-
-        if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-            if (!csrf_check($_POST['_csrf'] ?? null)) {
-                flash('error', 'Ungültiger Request.');
-                header('Location: index.php?page=install');
-                exit;
-            }
-
-            $firstName = trim((string)($_POST['first_name'] ?? ''));
-            $lastName = trim((string)($_POST['last_name'] ?? ''));
-            $email = trim((string)($_POST['email'] ?? ''));
-            $password = (string)($_POST['password'] ?? '');
-
-            if ($firstName === '' || $lastName === '' || $email === '' || strlen($password) < 8) {
-                flash('error', 'Bitte alle Felder ausfüllen (Passwort min. 8 Zeichen).');
-                header('Location: index.php?page=install');
-                exit;
-            }
-
-            db()->beginTransaction();
-            try {
-                $stmt = db()->prepare('INSERT INTO users (first_name, last_name, email, password_hash) VALUES (?, ?, ?, ?)');
-                $stmt->execute([$firstName, $lastName, $email, password_hash($password, PASSWORD_DEFAULT)]);
-                $userId = (int)db()->lastInsertId();
-
-                $roleStmt = db()->prepare("SELECT id FROM roles WHERE name = 'admin'");
-                $roleStmt->execute();
-                $roleId = (int)$roleStmt->fetchColumn();
-                db()->prepare('INSERT INTO user_roles (user_id, role_id) VALUES (?, ?)')->execute([$userId, $roleId]);
-
-                db()->commit();
-            } catch (Throwable $e) {
-                db()->rollBack();
-                flash('error', 'Admin konnte nicht angelegt werden.');
-                header('Location: index.php?page=install');
-                exit;
-            }
-            flash('success', 'Admin wurde angelegt. Bitte einloggen.');
-            header('Location: index.php?page=login');
-            exit;
-        }
-
-        render('Installation', 'install');
-        break;
+        header('Location: setup.php');
+        exit;
 
     case 'login':
         if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -2065,6 +2018,7 @@ switch ($page) {
         render('Flug händisch eintragen', 'manual_flight', compact('pilots', 'aircraft', 'manualDefaultsByAircraft'));
         break;
 
+    case 'invoice_html':
     case 'invoice_pdf':
         $invoiceId = (int)($_GET['id'] ?? 0);
 
@@ -2137,9 +2091,62 @@ switch ($page) {
             'phone' => (string)($invoice['phone'] ?? ''),
         ];
 
-        $viewData = compact('invoice', 'items', 'issuer', 'bank', 'vat', 'invoiceMeta', 'logoPublicPath', 'customerAddress');
+        $renderMode = $page === 'invoice_pdf' ? 'pdf' : 'html';
+        $logoSrc = '';
+        if ($renderMode === 'pdf' && $logoPublicPath !== '' && is_file($logoFilesystemPath)) {
+            $logoData = @file_get_contents($logoFilesystemPath);
+            if ($logoData !== false) {
+                $logoMime = 'image/png';
+                if (function_exists('finfo_open')) {
+                    $finfo = finfo_open(FILEINFO_MIME_TYPE);
+                    if ($finfo !== false) {
+                        $detectedMime = finfo_file($finfo, $logoFilesystemPath);
+                        if (is_string($detectedMime) && str_starts_with($detectedMime, 'image/')) {
+                            $logoMime = $detectedMime;
+                        }
+                        finfo_close($finfo);
+                    }
+                }
+                $logoSrc = 'data:' . $logoMime . ';base64,' . base64_encode($logoData);
+            }
+        } elseif ($logoPublicPath !== '') {
+            $logoSrc = $logoPublicPath;
+        }
+
+        $viewData = compact('invoice', 'items', 'issuer', 'bank', 'vat', 'invoiceMeta', 'logoSrc', 'customerAddress', 'renderMode');
         extract($viewData, EXTR_SKIP);
+        ob_start();
         include __DIR__ . '/app/views/invoice_pdf.php';
+        $invoiceHtml = (string)ob_get_clean();
+
+        if ($renderMode === 'html') {
+            header('Content-Type: text/html; charset=utf-8');
+            echo $invoiceHtml;
+            exit;
+        }
+
+        if (!dompdf_is_available()) {
+            http_response_code(500);
+            exit('PDF-Engine nicht verfügbar. Bitte public/vendor/dompdf hochladen.');
+        }
+        if (!extension_loaded('gd')) {
+            http_response_code(500);
+            exit('PHP-Erweiterung gd fehlt auf dem Server.');
+        }
+
+        $options = new \Dompdf\Options();
+        $options->set('isRemoteEnabled', true);
+        $options->set('isHtml5ParserEnabled', true);
+
+        $dompdf = new \Dompdf\Dompdf($options);
+        $dompdf->loadHtml($invoiceHtml, 'UTF-8');
+        $dompdf->setPaper('A4', 'portrait');
+        $dompdf->render();
+
+        $safeInvoiceNumber = preg_replace('/[^A-Za-z0-9\-_]/', '_', (string)$invoice['invoice_number']);
+        header('Content-Type: application/pdf');
+        header('Content-Disposition: inline; filename="' . $safeInvoiceNumber . '.pdf"');
+        echo $dompdf->output();
         exit;
         break;
 

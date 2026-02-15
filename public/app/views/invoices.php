@@ -103,27 +103,32 @@
             <td><?= number_format((float)$i['total_amount'], 2, '.', '') ?> CHF</td>
             <td>
               <span class="status-chip <?= h($i['payment_status']) ?>"><?= h($i['payment_status']) ?></span>
-              <form method="post" class="inline-form">
-                <input type="hidden" name="_csrf" value="<?= h(csrf_token()) ?>">
-                <input type="hidden" name="action" value="status">
-                <input type="hidden" name="invoice_id" value="<?= (int)$i['id'] ?>">
-                <select name="payment_status">
-                  <?php foreach (['open' => 'Offen', 'paid' => 'Bezahlt', 'overdue' => 'Überfällig'] as $value => $label): ?>
-                    <option value="<?= h($value) ?>" <?= $i['payment_status'] === $value ? 'selected' : '' ?>><?= h($label) ?></option>
-                  <?php endforeach; ?>
-                </select>
-                <button class="btn-small">Setzen</button>
-              </form>
             </td>
             <td>
-              <div class="inline-form">
-                <a class="btn-small" href="index.php?page=invoice_pdf&id=<?= (int)$i['id'] ?>" target="_blank">Rechnung anzeigen</a>
-                <form method="post" class="inline-form" onsubmit="return confirm('Rechnung wirklich stornieren? Stunden werden wieder unverrechnet.');">
-                  <input type="hidden" name="_csrf" value="<?= h(csrf_token()) ?>">
-                  <input type="hidden" name="action" value="cancel_invoice">
-                  <input type="hidden" name="invoice_id" value="<?= (int)$i['id'] ?>">
-                  <button type="submit" class="btn-ghost btn-small">Stornieren</button>
-                </form>
+              <div class="invoice-actions">
+                <div class="invoice-actions-row">
+                  <form method="post" class="inline-form invoice-status-form">
+                    <input type="hidden" name="_csrf" value="<?= h(csrf_token()) ?>">
+                    <input type="hidden" name="action" value="status">
+                    <input type="hidden" name="invoice_id" value="<?= (int)$i['id'] ?>">
+                    <select name="payment_status">
+                      <?php foreach (['open' => 'Offen', 'paid' => 'Bezahlt', 'overdue' => 'Überfällig'] as $value => $label): ?>
+                        <option value="<?= h($value) ?>" <?= $i['payment_status'] === $value ? 'selected' : '' ?>><?= h($label) ?></option>
+                      <?php endforeach; ?>
+                    </select>
+                    <button class="btn-small">Setzen</button>
+                  </form>
+                </div>
+                <div class="invoice-actions-row">
+                  <a class="btn-small" href="index.php?page=invoice_html&id=<?= (int)$i['id'] ?>" target="_blank">Rechnung HTML</a>
+                  <a class="btn-small" href="index.php?page=invoice_pdf&id=<?= (int)$i['id'] ?>" target="_blank">Rechnung PDF</a>
+                  <form method="post" class="inline-form" onsubmit="return confirm('Rechnung wirklich stornieren? Stunden werden wieder unverrechnet.');">
+                    <input type="hidden" name="_csrf" value="<?= h(csrf_token()) ?>">
+                    <input type="hidden" name="action" value="cancel_invoice">
+                    <input type="hidden" name="invoice_id" value="<?= (int)$i['id'] ?>">
+                    <button type="submit" class="btn-ghost btn-small">Stornieren</button>
+                  </form>
+                </div>
               </div>
             </td>
           </tr>

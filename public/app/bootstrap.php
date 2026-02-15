@@ -4,6 +4,47 @@ declare(strict_types=1);
 
 session_start();
 
+function load_dompdf(): bool
+{
+    static $attempted = false;
+    static $loaded = false;
+
+    if (class_exists(\Dompdf\Dompdf::class)) {
+        return true;
+    }
+    if ($attempted) {
+        return $loaded;
+    }
+    $attempted = true;
+
+    $autoloadCandidates = [
+        __DIR__ . '/../vendor/dompdf/autoload.inc.php',
+        __DIR__ . '/../vendor/autoload.php',
+    ];
+    foreach ($autoloadCandidates as $path) {
+        if (!is_file($path)) {
+            continue;
+        }
+        require_once $path;
+        if (class_exists(\Dompdf\Dompdf::class)) {
+            $loaded = true;
+            break;
+        }
+    }
+
+    return $loaded;
+}
+
+function dompdf_is_available(): bool
+{
+    return load_dompdf();
+}
+
+function dompdf_requirements_ok(): bool
+{
+    return dompdf_is_available() && extension_loaded('gd');
+}
+
 function config(string $key, mixed $default = null): mixed
 {
     static $config = null;

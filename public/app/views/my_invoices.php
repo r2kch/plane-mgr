@@ -16,7 +16,7 @@
             <td><?= h($i['period_from']) ?> - <?= h($i['period_to']) ?></td>
             <td><?= number_format((float)$i['total_amount'], 2, '.', '') ?> CHF</td>
             <td><span class="status-chip <?= h($i['payment_status']) ?>"><?= h($i['payment_status']) ?></span></td>
-            <td><a class="btn-small" href="index.php?page=invoice_pdf&id=<?= (int)$i['id'] ?>" target="_blank">Rechnung anzeigen</a></td>
+            <td><a class="btn-small" href="index.php?page=invoice_pdf&id=<?= (int)$i['id'] ?>" target="_blank">Rechnung PDF</a></td>
           </tr>
         <?php endforeach; ?>
       <?php endif; ?>
@@ -40,7 +40,7 @@
             <td><?= h($i['period_from']) ?> - <?= h($i['period_to']) ?></td>
             <td><?= number_format((float)$i['total_amount'], 2, '.', '') ?> CHF</td>
             <td><span class="status-chip <?= h($i['payment_status']) ?>"><?= h($i['payment_status']) ?></span></td>
-            <td><a class="btn-small" href="index.php?page=invoice_pdf&id=<?= (int)$i['id'] ?>" target="_blank">Rechnung anzeigen</a></td>
+            <td><a class="btn-small" href="index.php?page=invoice_pdf&id=<?= (int)$i['id'] ?>" target="_blank">Rechnung PDF</a></td>
           </tr>
         <?php endforeach; ?>
       <?php endif; ?>
