@@ -25,7 +25,8 @@ function render(string $title, string $view, array $data = []): void
       </div>
       <?php if ($user): ?>
         <div class="user-chip">
-          <span><?= h($user['first_name'] . ' ' . $user['last_name']) ?> (<?= h(implode(', ', $user['roles'] ?? [])) ?>)</span>
+          <a href="index.php?page=profile"><?= h($user['first_name'] . ' ' . $user['last_name']) ?></a>
+          <span>(<?= h(implode(', ', $user['roles'] ?? [])) ?>)</span>
           <a href="index.php?page=logout">Logout</a>
         </div>
       <?php endif; ?>
@@ -36,12 +37,29 @@ function render(string $title, string $view, array $data = []): void
         <a href="index.php">Dashboard</a>
         <?php if (module_enabled('reservations')): ?><a href="index.php?page=reservations">Reservierungen</a><?php endif; ?>
         <?php if (module_enabled('billing')): ?><a href="index.php?page=my_invoices">Meine Rechnungen</a><?php endif; ?>
-        <?php if (has_role('admin')): ?><a href="index.php?page=aircraft">Flugzeuge</a><?php endif; ?>
-        <?php if (has_role('admin')): ?><a href="index.php?page=groups">Flugzeug-Gruppen</a><?php endif; ?>
-        <?php if (has_role('admin')): ?><a href="index.php?page=users">Benutzer</a><?php endif; ?>
-        <?php if (module_enabled('billing') && has_role('admin')): ?><a href="index.php?page=rates">Preise</a><?php endif; ?>
-        <?php if (module_enabled('billing') && has_role('admin', 'accounting')): ?><a href="index.php?page=invoices">Abrechnung</a><?php endif; ?>
-        <?php if (module_enabled('audit') && has_role('admin')): ?><a href="index.php?page=audit">Audit-Log</a><?php endif; ?>
+        <a href="index.php?page=members">Mitglieder</a>
+        <?php if (has_role('admin')): ?>
+          <div class="nav-dropdown">
+            <span class="nav-link-red">Admin</span>
+            <div class="nav-dropdown-menu">
+              <a href="index.php?page=admin">Admin</a>
+              <a href="index.php?page=aircraft">Flugzeuge</a>
+              <a href="index.php?page=groups">Flugzeug-Gruppen</a>
+              <a href="index.php?page=users">Benutzer</a>
+              <?php if (module_enabled('audit')): ?><a href="index.php?page=audit">Audit-Log</a><?php endif; ?>
+            </div>
+          </div>
+        <?php endif; ?>
+        <?php if (module_enabled('billing') && has_role('admin', 'accounting')): ?>
+          <div class="nav-dropdown">
+            <span class="nav-link-red">Buchhaltung</span>
+            <div class="nav-dropdown-menu">
+              <a href="index.php?page=accounting">Buchhaltung</a>
+              <a href="index.php?page=invoices">Abrechnung</a>
+              <?php if (has_role('admin')): ?><a href="index.php?page=rates">Preise</a><?php endif; ?>
+            </div>
+          </div>
+        <?php endif; ?>
       </nav>
     <?php endif; ?>
 

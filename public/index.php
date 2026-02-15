@@ -15,6 +15,7 @@ if (!in_array($page, $publicPages, true)) {
 $modulePages = [
     'reservations' => 'reservations',
     'my_invoices' => 'billing',
+    'accounting' => 'billing',
     'rates' => 'billing',
     'invoices' => 'billing',
     'invoice_pdf' => 'billing',
@@ -209,6 +210,16 @@ switch ($page) {
             'calendarAircraft',
             'calendarReservationsByAircraft'
         ));
+        break;
+
+    case 'admin':
+        require_role('admin');
+        render('Admin', 'admin');
+        break;
+
+    case 'accounting':
+        require_role('admin', 'accounting');
+        render('Buchhaltung', 'accounting');
         break;
 
     case 'aircraft':
@@ -620,6 +631,7 @@ switch ($page) {
         $userSearch = trim((string)($_GET['q'] ?? ''));
         $openUserId = (int)($_GET['open_user_id'] ?? 0);
         $showNewUserForm = ((int)($_GET['new'] ?? 0)) === 1;
+        $countryOptions = european_countries();
         $usersPageUrl = 'index.php?page=users' . ($userSearch !== '' ? '&q=' . urlencode($userSearch) : '');
         $allGroups = db()->query('SELECT id, name FROM aircraft_groups ORDER BY name')->fetchAll();
         $validGroupIds = array_map(static fn(array $row): int => (int)$row['id'], $allGroups);
@@ -636,6 +648,12 @@ switch ($page) {
             if ($action === 'create') {
                 $firstName = trim((string)($_POST['first_name'] ?? ''));
                 $lastName = trim((string)($_POST['last_name'] ?? ''));
+                $street = trim((string)($_POST['street'] ?? ''));
+                $houseNumber = trim((string)($_POST['house_number'] ?? ''));
+                $postalCode = trim((string)($_POST['postal_code'] ?? ''));
+                $city = trim((string)($_POST['city'] ?? ''));
+                $countryCode = strtoupper(trim((string)($_POST['country_code'] ?? 'CH')));
+                $phone = trim((string)($_POST['phone'] ?? ''));
                 $email = trim((string)($_POST['email'] ?? ''));
                 $roles = array_values(array_filter((array)($_POST['roles'] ?? [])));
                 $groupIds = array_values(array_unique(array_map(static fn($id): int => (int)$id, (array)($_POST['group_ids'] ?? []))));
@@ -650,11 +668,14 @@ switch ($page) {
                     header('Location: ' . $usersPageUrl);
                     exit;
                 }
+                if (!isset($countryOptions[$countryCode])) {
+                    $countryCode = 'CH';
+                }
 
                 try {
                     db()->beginTransaction();
-                    $stmt = db()->prepare('INSERT INTO users (first_name, last_name, email, password_hash, is_active) VALUES (?, ?, ?, ?, 1)');
-                    $stmt->execute([$firstName, $lastName, $email, password_hash($password, PASSWORD_DEFAULT)]);
+                    $stmt = db()->prepare('INSERT INTO users (first_name, last_name, street, house_number, postal_code, city, country_code, phone, email, password_hash, is_active) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)');
+                    $stmt->execute([$firstName, $lastName, $street, $houseNumber, $postalCode, $city, $countryCode, $phone, $email, password_hash($password, PASSWORD_DEFAULT)]);
                     $newId = (int)db()->lastInsertId();
 
                     $roleInsert = db()->prepare('INSERT INTO user_roles (user_id, role_id) SELECT ?, id FROM roles WHERE name = ?');
@@ -684,6 +705,12 @@ switch ($page) {
                 $userId = (int)($_POST['user_id'] ?? 0);
                 $firstName = trim((string)($_POST['first_name'] ?? ''));
                 $lastName = trim((string)($_POST['last_name'] ?? ''));
+                $street = trim((string)($_POST['street'] ?? ''));
+                $houseNumber = trim((string)($_POST['house_number'] ?? ''));
+                $postalCode = trim((string)($_POST['postal_code'] ?? ''));
+                $city = trim((string)($_POST['city'] ?? ''));
+                $countryCode = strtoupper(trim((string)($_POST['country_code'] ?? 'CH')));
+                $phone = trim((string)($_POST['phone'] ?? ''));
                 $email = trim((string)($_POST['email'] ?? ''));
                 $roles = array_values(array_filter((array)($_POST['roles'] ?? [])));
                 $groupIds = array_values(array_unique(array_map(static fn($id): int => (int)$id, (array)($_POST['group_ids'] ?? []))));
@@ -698,6 +725,9 @@ switch ($page) {
                     header('Location: ' . $usersPageUrl);
                     exit;
                 }
+                if (!isset($countryOptions[$countryCode])) {
+                    $countryCode = 'CH';
+                }
 
                 if ($userId === (int)current_user()['id'] && $isActive === 0) {
                     flash('error', 'Eigener Benutzer kann nicht deaktiviert werden.');
@@ -707,8 +737,8 @@ switch ($page) {
 
                 try {
                     db()->beginTransaction();
-                    $stmt = db()->prepare('UPDATE users SET first_name = ?, last_name = ?, email = ?, is_active = ? WHERE id = ?');
-                    $stmt->execute([$firstName, $lastName, $email, $isActive, $userId]);
+                    $stmt = db()->prepare('UPDATE users SET first_name = ?, last_name = ?, street = ?, house_number = ?, postal_code = ?, city = ?, country_code = ?, phone = ?, email = ?, is_active = ? WHERE id = ?');
+                    $stmt->execute([$firstName, $lastName, $street, $houseNumber, $postalCode, $city, $countryCode, $phone, $email, $isActive, $userId]);
 
                     db()->prepare('DELETE FROM user_roles WHERE user_id = ?')->execute([$userId]);
                     $roleInsert = db()->prepare('INSERT INTO user_roles (user_id, role_id) SELECT ?, id FROM roles WHERE name = ?');
@@ -738,6 +768,12 @@ switch ($page) {
                     if ($userId === (int)current_user()['id']) {
                         $_SESSION['user']['first_name'] = $firstName;
                         $_SESSION['user']['last_name'] = $lastName;
+                        $_SESSION['user']['street'] = $street;
+                        $_SESSION['user']['house_number'] = $houseNumber;
+                        $_SESSION['user']['postal_code'] = $postalCode;
+                        $_SESSION['user']['city'] = $city;
+                        $_SESSION['user']['country_code'] = $countryCode;
+                        $_SESSION['user']['phone'] = $phone;
                         $_SESSION['user']['email'] = $email;
                         $_SESSION['user']['roles'] = user_roles($userId);
                     }
@@ -816,7 +852,7 @@ switch ($page) {
             exit;
         }
 
-        $usersSql = "SELECT u.id, u.first_name, u.last_name, u.email, u.is_active,
+        $usersSql = "SELECT u.id, u.first_name, u.last_name, u.street, u.house_number, u.postal_code, u.city, u.country_code, u.phone, u.email, u.is_active,
                 GROUP_CONCAT(r.name ORDER BY r.name SEPARATOR ',') AS roles_csv
             FROM users u
             LEFT JOIN user_roles ur ON ur.user_id = u.id
@@ -829,7 +865,7 @@ switch ($page) {
             $usersParams[] = $like;
             $usersParams[] = $like;
         }
-        $usersSql .= ' GROUP BY u.id, u.first_name, u.last_name, u.email, u.is_active
+        $usersSql .= ' GROUP BY u.id, u.first_name, u.last_name, u.street, u.house_number, u.postal_code, u.city, u.country_code, u.phone, u.email, u.is_active
             ORDER BY u.last_name, u.first_name';
         $usersStmt = db()->prepare($usersSql);
         $usersStmt->execute($usersParams);
@@ -850,7 +886,7 @@ switch ($page) {
             $userGroupIdsByUser[$uid][] = $gid;
         }
 
-        render('Benutzer', 'users', compact('users', 'userSearch', 'openUserId', 'showNewUserForm', 'allGroups', 'userGroupIdsByUser'));
+        render('Benutzer', 'users', compact('users', 'userSearch', 'openUserId', 'showNewUserForm', 'allGroups', 'userGroupIdsByUser', 'countryOptions'));
         break;
 
     case 'rates':
@@ -2008,6 +2044,106 @@ switch ($page) {
         $paidInvoices = $paidStmt->fetchAll();
 
         render('Meine Rechnungen', 'my_invoices', compact('openInvoices', 'paidInvoices'));
+        break;
+
+    case 'members':
+        $membersSearch = trim((string)($_GET['q'] ?? ''));
+        $membersSql = "SELECT first_name, last_name, phone
+            FROM users";
+        $membersParams = [];
+        if ($membersSearch !== '') {
+            $membersSql .= ' WHERE first_name LIKE ? OR last_name LIKE ? OR phone LIKE ?';
+            $like = '%' . $membersSearch . '%';
+            $membersParams[] = $like;
+            $membersParams[] = $like;
+            $membersParams[] = $like;
+        }
+        $membersSql .= ' ORDER BY last_name ASC, first_name ASC';
+        $membersStmt = db()->prepare($membersSql);
+        $membersStmt->execute($membersParams);
+        $members = $membersStmt->fetchAll();
+        render('Mitglieder', 'members', compact('members', 'membersSearch'));
+        break;
+
+    case 'profile':
+        $userId = (int)current_user()['id'];
+        $countryOptions = european_countries();
+
+        if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+            if (!csrf_check($_POST['_csrf'] ?? null)) {
+                flash('error', 'Ungültiger Request.');
+                header('Location: index.php?page=profile');
+                exit;
+            }
+
+            $firstName = trim((string)($_POST['first_name'] ?? ''));
+            $lastName = trim((string)($_POST['last_name'] ?? ''));
+            $street = trim((string)($_POST['street'] ?? ''));
+            $houseNumber = trim((string)($_POST['house_number'] ?? ''));
+            $postalCode = trim((string)($_POST['postal_code'] ?? ''));
+            $city = trim((string)($_POST['city'] ?? ''));
+            $countryCode = strtoupper(trim((string)($_POST['country_code'] ?? 'CH')));
+            $phone = trim((string)($_POST['phone'] ?? ''));
+            $newPassword = (string)($_POST['new_password'] ?? '');
+
+            if ($firstName === '' || $lastName === '') {
+                flash('error', 'Vorname und Nachname sind erforderlich.');
+                header('Location: index.php?page=profile');
+                exit;
+            }
+            if (!isset($countryOptions[$countryCode])) {
+                $countryCode = 'CH';
+            }
+
+            db()->beginTransaction();
+            try {
+                db()->prepare('UPDATE users SET first_name = ?, last_name = ?, street = ?, house_number = ?, postal_code = ?, city = ?, country_code = ?, phone = ? WHERE id = ?')
+                    ->execute([$firstName, $lastName, $street, $houseNumber, $postalCode, $city, $countryCode, $phone, $userId]);
+
+                if ($newPassword !== '') {
+                    if (strlen($newPassword) < 8) {
+                        db()->rollBack();
+                        flash('error', 'Neues Passwort ist zu kurz (min. 8 Zeichen).');
+                        header('Location: index.php?page=profile');
+                        exit;
+                    }
+                    db()->prepare('UPDATE users SET password_hash = ? WHERE id = ?')->execute([password_hash($newPassword, PASSWORD_DEFAULT), $userId]);
+                }
+
+                db()->commit();
+                $_SESSION['user']['first_name'] = $firstName;
+                $_SESSION['user']['last_name'] = $lastName;
+                $_SESSION['user']['street'] = $street;
+                $_SESSION['user']['house_number'] = $houseNumber;
+                $_SESSION['user']['postal_code'] = $postalCode;
+                $_SESSION['user']['city'] = $city;
+                $_SESSION['user']['country_code'] = $countryCode;
+                $_SESSION['user']['phone'] = $phone;
+
+                audit_log('update', 'profile', $userId);
+                flash('success', 'Profil gespeichert.');
+                header('Location: index.php?page=profile');
+                exit;
+            } catch (Throwable $e) {
+                if (db()->inTransaction()) {
+                    db()->rollBack();
+                }
+                flash('error', 'Profil konnte nicht gespeichert werden.');
+                header('Location: index.php?page=profile');
+                exit;
+            }
+        }
+
+        $profileStmt = db()->prepare('SELECT id, first_name, last_name, street, house_number, postal_code, city, country_code, phone, email FROM users WHERE id = ?');
+        $profileStmt->execute([$userId]);
+        $profile = $profileStmt->fetch();
+        if (!$profile) {
+            flash('error', 'Benutzer nicht gefunden.');
+            header('Location: index.php?page=logout');
+            exit;
+        }
+
+        render('Mein Profil', 'profile', compact('profile', 'countryOptions'));
         break;
 
     case 'audit':

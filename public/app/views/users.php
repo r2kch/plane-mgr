@@ -11,19 +11,53 @@
 
 <?php if ((int)($showNewUserForm ?? 0) === 1): ?>
   <h3>Neuen Benutzer anlegen</h3>
-  <form method="post" class="grid-form">
+  <form method="post">
     <input type="hidden" name="_csrf" value="<?= h(csrf_token()) ?>">
     <input type="hidden" name="action" value="create">
 
-    <label>Vorname
-      <input name="first_name" required>
-    </label>
-    <label>Nachname
-      <input name="last_name" required>
-    </label>
-    <label>E-Mail
-      <input type="email" name="email" required>
-    </label>
+    <div class="grid-form" style="grid-template-columns: repeat(3, minmax(220px, 1fr)); margin-bottom: 10px;">
+      <label>Vorname
+        <input name="first_name" required>
+      </label>
+      <label>Name
+        <input name="last_name" required>
+      </label>
+      <label>E-Mail
+        <input type="email" name="email" required>
+      </label>
+    </div>
+
+    <div class="grid-form" style="grid-template-columns: minmax(220px, 1.3fr) minmax(120px, 0.6fr) minmax(140px, 0.8fr) minmax(180px, 1fr) minmax(180px, 1fr); margin-bottom: 10px;">
+      <label>Strasse
+        <input name="street">
+      </label>
+      <label>Hausnummer
+        <input name="house_number">
+      </label>
+      <label>Postleitzahl
+        <input name="postal_code">
+      </label>
+      <label>Ort
+        <input name="city">
+      </label>
+      <label>Land
+        <select name="country_code">
+          <?php foreach (($countryOptions ?? []) as $countryCode => $countryName): ?>
+            <option value="<?= h((string)$countryCode) ?>" <?= (string)$countryCode === 'CH' ? 'selected' : '' ?>><?= h((string)$countryName) ?></option>
+          <?php endforeach; ?>
+        </select>
+      </label>
+    </div>
+
+    <div class="grid-form" style="grid-template-columns: repeat(2, minmax(220px, 1fr)); margin-bottom: 10px;">
+      <label>Telefonnummer
+        <input name="phone">
+      </label>
+      <label>Initiales Passwort
+        <input type="password" name="password" minlength="8" required>
+      </label>
+    </div>
+
     <label>Rolle
       <div class="checks role-group">
         <label class="checkline"><input type="checkbox" name="roles[]" value="pilot" checked data-pilot-toggle="create"><span>Pilot</span></label>
@@ -41,10 +75,7 @@
         <?php endif; ?>
       </div>
     </label>
-    <label>Initiales Passwort
-      <input type="password" name="password" minlength="8" required>
-    </label>
-    <button type="submit">Benutzer erstellen</button>
+    <button type="submit" class="btn-small">Benutzer erstellen</button>
   </form>
 <?php endif; ?>
 
@@ -119,15 +150,43 @@ foreach ($users as $candidate) {
     <input type="hidden" name="action" value="update">
     <input type="hidden" name="user_id" value="<?= (int)$openUser['id'] ?>">
 
-    <div class="grid-form user-grid">
+    <div class="grid-form" style="grid-template-columns: repeat(3, minmax(220px, 1fr)); margin-bottom: 10px;">
       <label>Vorname
         <input name="first_name" value="<?= h($openUser['first_name']) ?>" required>
       </label>
-      <label>Nachname
+      <label>Name
         <input name="last_name" value="<?= h($openUser['last_name']) ?>" required>
       </label>
       <label>E-Mail
         <input type="email" name="email" value="<?= h($openUser['email']) ?>" required>
+      </label>
+    </div>
+
+    <div class="grid-form" style="grid-template-columns: minmax(220px, 1.3fr) minmax(120px, 0.6fr) minmax(140px, 0.8fr) minmax(180px, 1fr) minmax(180px, 1fr); margin-bottom: 10px;">
+      <label>Strasse
+        <input name="street" value="<?= h((string)($openUser['street'] ?? '')) ?>">
+      </label>
+      <label>Hausnummer
+        <input name="house_number" value="<?= h((string)($openUser['house_number'] ?? '')) ?>">
+      </label>
+      <label>Postleitzahl
+        <input name="postal_code" value="<?= h((string)($openUser['postal_code'] ?? '')) ?>">
+      </label>
+      <label>Ort
+        <input name="city" value="<?= h((string)($openUser['city'] ?? '')) ?>">
+      </label>
+      <label>Land
+        <select name="country_code">
+          <?php foreach (($countryOptions ?? []) as $countryCode => $countryName): ?>
+            <option value="<?= h((string)$countryCode) ?>" <?= (string)$countryCode === (string)($openUser['country_code'] ?? 'CH') ? 'selected' : '' ?>><?= h((string)$countryName) ?></option>
+          <?php endforeach; ?>
+        </select>
+      </label>
+    </div>
+
+    <div class="grid-form" style="grid-template-columns: repeat(3, minmax(220px, 1fr)); margin-bottom: 10px;">
+      <label>Telefonnummer
+        <input name="phone" value="<?= h((string)($openUser['phone'] ?? '')) ?>">
       </label>
       <label>Status
         <select name="is_active">

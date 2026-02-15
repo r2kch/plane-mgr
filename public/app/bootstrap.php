@@ -66,6 +66,12 @@ function db(): PDO
         CONSTRAINT fk_uag_group FOREIGN KEY (group_id) REFERENCES aircraft_groups(id) ON DELETE CASCADE
     )");
     $pdo->exec('ALTER TABLE aircraft ADD COLUMN IF NOT EXISTS aircraft_group_id INT NULL AFTER type');
+    $pdo->exec('ALTER TABLE users ADD COLUMN IF NOT EXISTS street VARCHAR(150) NULL AFTER last_name');
+    $pdo->exec('ALTER TABLE users ADD COLUMN IF NOT EXISTS house_number VARCHAR(20) NULL AFTER street');
+    $pdo->exec('ALTER TABLE users ADD COLUMN IF NOT EXISTS postal_code VARCHAR(20) NULL AFTER house_number');
+    $pdo->exec('ALTER TABLE users ADD COLUMN IF NOT EXISTS city VARCHAR(100) NULL AFTER postal_code');
+    $pdo->exec("ALTER TABLE users ADD COLUMN IF NOT EXISTS country_code CHAR(2) NOT NULL DEFAULT 'CH' AFTER city");
+    $pdo->exec('ALTER TABLE users ADD COLUMN IF NOT EXISTS phone VARCHAR(50) NULL AFTER country_code');
 
     $fkStmt = $pdo->query("SELECT COUNT(*) FROM information_schema.TABLE_CONSTRAINTS
         WHERE CONSTRAINT_SCHEMA = DATABASE()
@@ -247,4 +253,56 @@ function user_has_group_access_to_aircraft(int $userId, int $aircraftId): bool
           AND a.aircraft_group_id IS NOT NULL");
     $stmt->execute([$aircraftId, $userId]);
     return (int)$stmt->fetchColumn() > 0;
+}
+
+function european_countries(): array
+{
+    return [
+        'AL' => 'Albanien',
+        'AD' => 'Andorra',
+        'BE' => 'Belgien',
+        'BA' => 'Bosnien und Herzegowina',
+        'BG' => 'Bulgarien',
+        'DK' => 'Dänemark',
+        'DE' => 'Deutschland',
+        'EE' => 'Estland',
+        'FI' => 'Finnland',
+        'FR' => 'Frankreich',
+        'GR' => 'Griechenland',
+        'IE' => 'Irland',
+        'IS' => 'Island',
+        'IT' => 'Italien',
+        'XK' => 'Kosovo',
+        'HR' => 'Kroatien',
+        'LV' => 'Lettland',
+        'LI' => 'Liechtenstein',
+        'LT' => 'Litauen',
+        'LU' => 'Luxemburg',
+        'MT' => 'Malta',
+        'MD' => 'Moldau',
+        'MC' => 'Monaco',
+        'ME' => 'Montenegro',
+        'NL' => 'Niederlande',
+        'MK' => 'Nordmazedonien',
+        'NO' => 'Norwegen',
+        'AT' => 'Österreich',
+        'PL' => 'Polen',
+        'PT' => 'Portugal',
+        'RO' => 'Rumänien',
+        'SM' => 'San Marino',
+        'SE' => 'Schweden',
+        'CH' => 'Schweiz',
+        'RS' => 'Serbien',
+        'SK' => 'Slowakei',
+        'SI' => 'Slowenien',
+        'ES' => 'Spanien',
+        'CZ' => 'Tschechien',
+        'TR' => 'Türkei',
+        'UA' => 'Ukraine',
+        'HU' => 'Ungarn',
+        'VA' => 'Vatikanstadt',
+        'GB' => 'Vereinigtes Königreich',
+        'BY' => 'Weissrussland',
+        'CY' => 'Zypern',
+    ];
 }

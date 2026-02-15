@@ -64,6 +64,59 @@ body {
   font-weight: 700;
 }
 
+.nav-dropdown {
+  position: relative;
+}
+
+.nav-link-red {
+  text-decoration: none;
+  color: var(--danger);
+  background: #f8e8ec;
+  border-radius: 10px;
+  padding: 8px 12px;
+  font-weight: 700;
+  cursor: default;
+  display: inline-flex;
+  align-items: center;
+}
+
+.nav-dropdown-menu {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  min-width: 220px;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: var(--shadow);
+  padding: 6px;
+  display: none;
+  gap: 4px;
+  z-index: 20;
+}
+
+.nav-dropdown:hover .nav-dropdown-menu,
+.nav-dropdown:focus-within .nav-dropdown-menu {
+  display: grid;
+}
+
+.nav-dropdown-menu a {
+  text-decoration: none;
+  color: var(--ink);
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.nav-dropdown-menu a:hover {
+  background: #f2f6fb;
+}
+
+.admin-hub-cards .card {
+  display: grid;
+  gap: 8px;
+}
+
 .panel {
   background: var(--card);
   border: 1px solid var(--line);
