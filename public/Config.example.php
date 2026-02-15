@@ -16,6 +16,7 @@ return [
         'pass' => 'db_password',
     ],
     'smtp' => [
+        'enabled' => true,
         'host' => 'smtp.example.com',
         'port' => 587,
         'user' => 'smtp_user',

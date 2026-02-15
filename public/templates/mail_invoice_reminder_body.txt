@@ -1,0 +1,6 @@
+Hallo {customer.first_name}
+
+zu der Rechnung {invoice.invoice_number} ist die Zahlung noch ausstehend. Bitte bezahle den offenen Betrag bitte umgehend.
+
+Liebe Grüsse,
+{issuer.full}

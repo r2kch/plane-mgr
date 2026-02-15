@@ -211,6 +211,206 @@ function pull_flashes(): array
     return $flashes;
 }
 
+function smtp_enabled(): bool
+{
+    $enabled = (bool)config('smtp.enabled', true);
+    $host = trim((string)config('smtp.host', ''));
+    $port = (int)config('smtp.port', 0);
+    $from = trim((string)config('smtp.from', ''));
+
+    return $enabled && $host !== '' && $port > 0 && $from !== '';
+}
+
+function smtp_send_mail(string $to, string $subject, string $htmlBody, ?string $textBody = null, array $attachments = []): array
+{
+    $enabled = (bool)config('smtp.enabled', true);
+    $host = trim((string)config('smtp.host', ''));
+    $port = (int)config('smtp.port', 25);
+    $user = trim((string)config('smtp.user', ''));
+    $pass = (string)config('smtp.pass', '');
+    $from = trim((string)config('smtp.from', ''));
+    $fromName = trim((string)config('smtp.from_name', ''));
+
+    if (!$enabled) {
+        return ['ok' => true, 'skipped' => true, 'error' => null];
+    }
+
+    if ($host === '' || $port <= 0 || $from === '') {
+        return ['ok' => false, 'error' => 'SMTP ist unvollständig konfiguriert.'];
+    }
+    if (!filter_var($to, FILTER_VALIDATE_EMAIL)) {
+        return ['ok' => false, 'error' => 'Ungültige Empfängeradresse.'];
+    }
+
+    $socket = @fsockopen($host, $port, $errno, $errstr, 15);
+    if (!$socket) {
+        return ['ok' => false, 'error' => "SMTP-Verbindung fehlgeschlagen ($errno): $errstr"];
+    }
+
+    stream_set_timeout($socket, 15);
+
+    $readResponse = static function ($conn): array {
+        $full = '';
+        $code = 0;
+        while (($line = fgets($conn, 515)) !== false) {
+            $full .= $line;
+            if (preg_match('/^(\d{3})([\s-])/', $line, $m)) {
+                $code = (int)$m[1];
+                if ($m[2] === ' ') {
+                    break;
+                }
+            }
+        }
+        return ['code' => $code, 'raw' => trim($full)];
+    };
+
+    $expect = static function ($conn, array $allowedCodes, ?string $command = null) use ($readResponse): array {
+        if ($command !== null) {
+            fwrite($conn, $command . "\r\n");
+        }
+        $resp = $readResponse($conn);
+        if (!in_array($resp['code'], $allowedCodes, true)) {
+            return ['ok' => false, 'error' => $resp['raw']];
+        }
+        return ['ok' => true, 'raw' => $resp['raw']];
+    };
+
+    $helloHost = $_SERVER['SERVER_NAME'] ?? 'localhost';
+    $needAuth = ($user !== '' || $pass !== '');
+
+    $result = $expect($socket, [220]);
+    if (!$result['ok']) {
+        fclose($socket);
+        return ['ok' => false, 'error' => 'SMTP Begrüßung fehlgeschlagen: ' . $result['error']];
+    }
+
+    $result = $expect($socket, [250], 'EHLO ' . $helloHost);
+    if (!$result['ok']) {
+        $result = $expect($socket, [250], 'HELO ' . $helloHost);
+        if (!$result['ok']) {
+            fclose($socket);
+            return ['ok' => false, 'error' => 'SMTP HELO/EHLO fehlgeschlagen: ' . $result['error']];
+        }
+    }
+
+    if ($needAuth) {
+        $result = $expect($socket, [334], 'AUTH LOGIN');
+        if (!$result['ok']) {
+            fclose($socket);
+            return ['ok' => false, 'error' => 'SMTP AUTH LOGIN fehlgeschlagen: ' . $result['error']];
+        }
+
+        $result = $expect($socket, [334], base64_encode($user));
+        if (!$result['ok']) {
+            fclose($socket);
+            return ['ok' => false, 'error' => 'SMTP Benutzername abgelehnt: ' . $result['error']];
+        }
+
+        $result = $expect($socket, [235], base64_encode($pass));
+        if (!$result['ok']) {
+            fclose($socket);
+            return ['ok' => false, 'error' => 'SMTP Passwort abgelehnt: ' . $result['error']];
+        }
+    }
+
+    $result = $expect($socket, [250], 'MAIL FROM:<' . $from . '>');
+    if (!$result['ok']) {
+        fclose($socket);
+        return ['ok' => false, 'error' => 'MAIL FROM fehlgeschlagen: ' . $result['error']];
+    }
+
+    $result = $expect($socket, [250, 251], 'RCPT TO:<' . $to . '>');
+    if (!$result['ok']) {
+        fclose($socket);
+        return ['ok' => false, 'error' => 'RCPT TO fehlgeschlagen: ' . $result['error']];
+    }
+
+    $result = $expect($socket, [354], 'DATA');
+    if (!$result['ok']) {
+        fclose($socket);
+        return ['ok' => false, 'error' => 'DATA fehlgeschlagen: ' . $result['error']];
+    }
+
+    $boundaryAlt = 'PM-ALT-' . bin2hex(random_bytes(8));
+    $boundaryMixed = 'PM-MIX-' . bin2hex(random_bytes(8));
+    $encodedSubject = '=?UTF-8?B?' . base64_encode($subject) . '?=';
+    $safeFromName = str_replace(['"', "\r", "\n"], '', $fromName);
+    $fromHeader = $safeFromName !== '' ? sprintf('"%s" <%s>', $safeFromName, $from) : $from;
+    $text = $textBody !== null ? $textBody : trim(strip_tags(str_replace(['<br>', '<br/>', '<br />'], "\n", $htmlBody)));
+    $text = preg_replace("/\r\n|\r|\n/", "\r\n", $text ?? '');
+
+    $headers = [
+        'Date: ' . date(DATE_RFC2822),
+        'From: ' . $fromHeader,
+        'To: <' . $to . '>',
+        'Subject: ' . $encodedSubject,
+        'MIME-Version: 1.0',
+    ];
+    $hasAttachments = !empty($attachments);
+    if ($hasAttachments) {
+        $headers[] = 'Content-Type: multipart/mixed; boundary="' . $boundaryMixed . '"';
+    } else {
+        $headers[] = 'Content-Type: multipart/alternative; boundary="' . $boundaryAlt . '"';
+    }
+
+    $bodyLines = [];
+    if ($hasAttachments) {
+        $bodyLines[] = '--' . $boundaryMixed;
+        $bodyLines[] = 'Content-Type: multipart/alternative; boundary="' . $boundaryAlt . '"';
+        $bodyLines[] = '';
+    }
+
+    $bodyLines[] = '--' . $boundaryAlt;
+    $bodyLines[] = 'Content-Type: text/plain; charset=UTF-8';
+    $bodyLines[] = 'Content-Transfer-Encoding: 8bit';
+    $bodyLines[] = '';
+    $bodyLines[] = $text;
+    $bodyLines[] = '--' . $boundaryAlt;
+    $bodyLines[] = 'Content-Type: text/html; charset=UTF-8';
+    $bodyLines[] = 'Content-Transfer-Encoding: 8bit';
+    $bodyLines[] = '';
+    $bodyLines[] = $htmlBody;
+    $bodyLines[] = '--' . $boundaryAlt . '--';
+    $bodyLines[] = '';
+
+    if ($hasAttachments) {
+        foreach ($attachments as $attachment) {
+            $filename = trim((string)($attachment['filename'] ?? 'attachment.bin'));
+            $content = (string)($attachment['content'] ?? '');
+            $mime = trim((string)($attachment['mime'] ?? 'application/octet-stream'));
+            if ($content === '') {
+                continue;
+            }
+            $safeFilename = str_replace(['"', "\r", "\n"], '', $filename);
+            $encoded = chunk_split(base64_encode($content), 76, "\r\n");
+
+            $bodyLines[] = '--' . $boundaryMixed;
+            $bodyLines[] = 'Content-Type: ' . $mime . '; name="' . $safeFilename . '"';
+            $bodyLines[] = 'Content-Transfer-Encoding: base64';
+            $bodyLines[] = 'Content-Disposition: attachment; filename="' . $safeFilename . '"';
+            $bodyLines[] = '';
+            $bodyLines[] = $encoded;
+        }
+        $bodyLines[] = '--' . $boundaryMixed . '--';
+        $bodyLines[] = '';
+    }
+
+    $data = implode("\r\n", $headers) . "\r\n\r\n" . implode("\r\n", $bodyLines);
+    $data = str_replace("\r\n.\r\n", "\r\n..\r\n", $data);
+
+    fwrite($socket, $data . "\r\n.\r\n");
+    $result = $readResponse($socket);
+    if (!in_array($result['code'], [250], true)) {
+        fclose($socket);
+        return ['ok' => false, 'error' => 'Nachricht wurde nicht akzeptiert: ' . $result['raw']];
+    }
+
+    $expect($socket, [221, 250], 'QUIT');
+    fclose($socket);
+
+    return ['ok' => true, 'error' => null];
+}
+
 function audit_log(string $action, string $entity, ?int $entityId = null, array $meta = []): void
 {
     $user = current_user();

@@ -1,0 +1,1 @@
+{issuer.name}: Storno der Rechnung {invoice.invoice_number}

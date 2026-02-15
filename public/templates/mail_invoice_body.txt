@@ -1,0 +1,6 @@
+Hallo {customer.first_name}
+
+im Anhang senden wir die automatisiert unsere Rechnung zu. Bitte bezahle die Rechnung bis zum {invoiceMeta.due_date}.
+
+Liebe Grüsse,
+{issuer.full}

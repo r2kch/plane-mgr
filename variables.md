@@ -94,3 +94,30 @@ Diese Werte kommen aus `public/Config.php`:
 - `invoice.vat.uid`
 - `invoice.issuer.*`
 - `invoice.bank.*`
+
+## Mail-Template Variablen
+
+Diese Platzhalter können in folgenden Dateien verwendet werden:
+
+- `public/templates/mail_invoice_subject.txt`
+- `public/templates/mail_invoice_body.txt`
+- `public/templates/mail_invoice_cancel_subject.txt`
+- `public/templates/mail_invoice_cancel_body.txt`
+- `public/templates/mail_invoice_reminder_subject.txt`
+- `public/templates/mail_invoice_reminder_body.txt`
+
+Verfügbare Platzhalter:
+
+- `{issuer.name}`
+- `{issuer.full}`
+- `{invoice.invoice_number}`
+- `{invoiceMeta.due_date}`
+- `{customer.first_name}`
+- `{customer.last_name}`
+- `{customer.name}`
+
+Zusätzliche Alias-Platzhalter:
+
+- `{NUMMER}` (gleich wie `{invoice.invoice_number}`)
+- `{Vorname}` (gleich wie `{customer.first_name}`)
+- `{zahlbar bis}` (gleich wie `{invoiceMeta.due_date}`)

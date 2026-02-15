@@ -10,16 +10,16 @@ Klassische PHP/MySQL-Reservations- und Abrechnungssoftware für eine Flugsportgr
 - Flugzeugverwaltung (Immatrikulation, Typ, Status, Basispreis)
 - Preisverwaltung je Pilot und Flugzeug (`aircraft_user_rates`)
 - Rechnungserzeugung aus offenen Stunden (pro Pilot)
-- Zahlungsstatus (`open`, `part_paid`, `paid`, `overdue`)
+- Zahlungsstatus (`open`, `paid`, `overdue`)
 - Rechnungsansicht (`invoice_pdf`) als HTML/PDF-Basis
 - Meine Rechnungen: eigene offenen/bezahlten Rechnungen
+- SMTP Versand für:
+  - Rechnung beim Erzeugen (optional per Checkbox)
+  - Storno-Mail beim Stornieren
+  - Zahlungserinnerung bei `overdue`
+  - jeweils mit PDF-Anhang
 - Audit-Log (nur Admin)
 - Rollen-/Rechtematrix Vorlage: `docs/rollen_rechte_vorlage.csv`
-
-
-## ToDo
-- Rechnungshandling und Design
-
 
 
 ## Setup
@@ -37,10 +37,6 @@ siehe [DEPLOY.md](DEPLOY.md) (nur `public/` hochladen) und `public/setup.php` au
 - Root Passwort: `rootpass`
 - Das Schema wird beim ersten Start automatisch aus `sql/schema.sql` importiert.
 
-## ToDo
-- PDF Rechnung
-- Rechnungsversand (SMTP)
-- Cronjobs sind aktuell nicht erforderlich. Mail-Queue/Mahnläufe können später ergänzt werden.
 
 ## Module-Schalter (global)
 In `public/Config.php` können Module für alle Benutzer global aktiviert/deaktiviert werden:
@@ -60,7 +56,7 @@ In `public/Config.php` können Module für alle Benutzer global aktiviert/deakti
 
 - `billing = false`:
   - Menüs `Meine Rechnungen`, `Preise`, `Abrechnung` ausgeblendet
-  - Seiten `my_invoices`, `rates`, `invoices`, `invoice_pdf`, `manual_flight` gesperrt
+  - Seiten `my_invoices`, `rates`, `invoices`, `invoice_pdf`, `manual_flight`, `accounting_flights` gesperrt
   - Dashboard: Karte `Offene Rechnungen` ausgeblendet
 
 - `audit = false`:
@@ -69,6 +65,40 @@ In `public/Config.php` können Module für alle Benutzer global aktiviert/deakti
 
 ## Hinweise für Entwicklung:
 - `public/cleanup.php` (nur Admin) löscht Rechnungen/Rechnungspositionen und setzt Reservierungen auf "nicht verrechnet" zurück (`invoice_id = NULL`).
+- `public/debug.php` enthält einen SMTP-Test (Testmail an frei wählbare Adresse).
+
+## SMTP Konfiguration
+In `public/Config.php`:
+
+```php
+'smtp' => [
+    'enabled' => true, // false = kein Versand
+    'host' => 'mail.example.com',
+    'port' => 25,
+    'user' => '',
+    'pass' => '',
+    'from' => 'bill@example.com',
+    'from_name' => 'Plane Manager Notification',
+],
+```
+
+- Wenn `user`/`pass` leer sind: Versand ohne SMTP-Authentifizierung.
+- Wenn `user`/`pass` gesetzt sind: Versand mit `AUTH LOGIN`.
+- Wenn `enabled = false`: Es werden keine E-Mails versendet.
+
+## Mail-Templates
+Editierbare Dateien im Dateisystem:
+- Rechnung:
+  - `public/templates/mail_invoice_subject.txt`
+  - `public/templates/mail_invoice_body.txt`
+- Storno:
+  - `public/templates/mail_invoice_cancel_subject.txt`
+  - `public/templates/mail_invoice_cancel_body.txt`
+- Zahlungserinnerung:
+  - `public/templates/mail_invoice_reminder_subject.txt`
+  - `public/templates/mail_invoice_reminder_body.txt`
+
+Verfügbare Platzhalter sind in `variables.md` dokumentiert.
 
 ## Verzeichnis
 - `public/index.php`: Front Controller
@@ -78,3 +108,8 @@ In `public/Config.php` können Module für alle Benutzer global aktiviert/deakti
 - `public/app/layout.php`: globales Layout
 - `public/app/views/*`: Seiten
 - `sql/schema.sql`: Datenbankmodell + Seed
+
+
+## ToDo
+- E-Mail bei Reservation mit ICS Datei 
+- E-Mail bei Storno

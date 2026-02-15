@@ -1,0 +1,6 @@
+Hallo {customer.first_name}
+
+die Rechnung im Anhang mit der Nummer {invoice.invoice_number} wurde storniert. Bitte bezahle diese nicht mehr.
+
+Liebe Grüsse,
+{issuer.full}

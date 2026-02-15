@@ -1557,6 +1557,245 @@ switch ($page) {
             return $rows;
         };
 
+        $loadInvoiceDocumentData = static function (int $invoiceId): ?array {
+            $stmt = db()->prepare('SELECT i.*, CONCAT(u.first_name, " ", u.last_name) AS customer_name, u.first_name, u.last_name, u.email,
+                    u.street, u.house_number, u.postal_code, u.city, u.country_code, u.phone
+                FROM invoices i
+                JOIN users u ON u.id = i.user_id
+                WHERE i.id = ?');
+            $stmt->execute([$invoiceId]);
+            $invoice = $stmt->fetch();
+            if (!$invoice) {
+                return null;
+            }
+
+            $itemsStmt = db()->prepare('SELECT * FROM invoice_items WHERE invoice_id = ? ORDER BY flight_date ASC, id ASC');
+            $itemsStmt->execute([$invoiceId]);
+            $items = $itemsStmt->fetchAll();
+
+            $countryOptions = european_countries();
+            $issuer = [
+                'name' => (string)config('invoice.issuer.name', ''),
+                'street' => (string)config('invoice.issuer.street', ''),
+                'house_number' => (string)config('invoice.issuer.house_number', ''),
+                'postal_code' => (string)config('invoice.issuer.postal_code', ''),
+                'city' => (string)config('invoice.issuer.city', ''),
+                'country' => (string)config('invoice.issuer.country', 'Schweiz'),
+                'email' => (string)config('invoice.issuer.email', ''),
+                'phone' => (string)config('invoice.issuer.phone', ''),
+                'website' => (string)config('invoice.issuer.website', ''),
+            ];
+            $bank = [
+                'recipient' => (string)config('invoice.bank.recipient', ''),
+                'iban' => (string)config('invoice.bank.iban', ''),
+                'bic' => (string)config('invoice.bank.bic', ''),
+                'bank_name' => (string)config('invoice.bank.bank_name', ''),
+                'bank_address' => (string)config('invoice.bank.bank_address', ''),
+            ];
+            $vat = [
+                'enabled' => (bool)config('invoice.vat.enabled', false),
+                'rate_percent' => (float)config('invoice.vat.rate_percent', 0),
+                'uid' => (string)config('invoice.vat.uid', ''),
+            ];
+
+            $paymentTargetDays = (int)config('invoice.payment_target_days', 30);
+            $invoiceMeta = [
+                'title' => (string)config('invoice.title', 'Rechnung'),
+                'currency' => (string)config('invoice.currency', 'CHF'),
+                'payment_target_days' => $paymentTargetDays,
+                'due_date' => date('d.m.Y', strtotime((string)$invoice['created_at'] . ' +' . $paymentTargetDays . ' days')),
+            ];
+
+            $logoPathConfig = trim((string)config('invoice.logo_path', 'logo.png'));
+            $logoFilesystemPath = __DIR__ . '/' . ltrim($logoPathConfig, '/');
+            $logoPublicPath = is_file($logoFilesystemPath) ? $logoPathConfig : '';
+
+            $customerAddress = [
+                'name' => (string)$invoice['customer_name'],
+                'street_line' => trim((string)$invoice['street'] . ' ' . (string)$invoice['house_number']),
+                'city_line' => trim((string)$invoice['postal_code'] . ' ' . (string)$invoice['city']),
+                'country' => $countryOptions[(string)$invoice['country_code']] ?? (string)$invoice['country_code'],
+                'email' => (string)$invoice['email'],
+                'phone' => (string)($invoice['phone'] ?? ''),
+            ];
+
+            return compact('invoice', 'items', 'issuer', 'bank', 'vat', 'invoiceMeta', 'logoFilesystemPath', 'logoPublicPath', 'customerAddress');
+        };
+
+        $renderInvoiceHtmlFromData = static function (array $data, string $renderMode): string {
+            $invoice = $data['invoice'];
+            $items = $data['items'];
+            $issuer = $data['issuer'];
+            $bank = $data['bank'];
+            $vat = $data['vat'];
+            $invoiceMeta = $data['invoiceMeta'];
+            $customerAddress = $data['customerAddress'];
+            $logoFilesystemPath = $data['logoFilesystemPath'];
+            $logoPublicPath = $data['logoPublicPath'];
+
+            $logoSrc = '';
+            if ($renderMode === 'pdf' && $logoPublicPath !== '' && is_file($logoFilesystemPath)) {
+                $logoData = @file_get_contents($logoFilesystemPath);
+                if ($logoData !== false) {
+                    $logoMime = 'image/png';
+                    if (function_exists('finfo_open')) {
+                        $finfo = finfo_open(FILEINFO_MIME_TYPE);
+                        if ($finfo !== false) {
+                            $detectedMime = finfo_file($finfo, $logoFilesystemPath);
+                            if (is_string($detectedMime) && str_starts_with($detectedMime, 'image/')) {
+                                $logoMime = $detectedMime;
+                            }
+                            finfo_close($finfo);
+                        }
+                    }
+                    $logoSrc = 'data:' . $logoMime . ';base64,' . base64_encode($logoData);
+                }
+            } elseif ($logoPublicPath !== '') {
+                $logoSrc = $logoPublicPath;
+            }
+
+            ob_start();
+            include __DIR__ . '/app/views/invoice_pdf.php';
+            return (string)ob_get_clean();
+        };
+
+        $renderInvoicePdfBinary = static function (int $invoiceId) use ($loadInvoiceDocumentData, $renderInvoiceHtmlFromData): array {
+            if (!dompdf_is_available()) {
+                return ['ok' => false, 'error' => 'PDF-Engine nicht verfügbar. Bitte public/vendor/dompdf hochladen.'];
+            }
+            if (!extension_loaded('gd')) {
+                return ['ok' => false, 'error' => 'PHP-Erweiterung gd fehlt auf dem Server.'];
+            }
+
+            $data = $loadInvoiceDocumentData($invoiceId);
+            if ($data === null) {
+                return ['ok' => false, 'error' => 'Rechnung nicht gefunden.'];
+            }
+
+            $invoiceHtml = $renderInvoiceHtmlFromData($data, 'pdf');
+            $options = new \Dompdf\Options();
+            $options->set('isRemoteEnabled', true);
+            $options->set('isHtml5ParserEnabled', true);
+
+            $dompdf = new \Dompdf\Dompdf($options);
+            $dompdf->loadHtml($invoiceHtml, 'UTF-8');
+            $dompdf->setPaper('A4', 'portrait');
+            $dompdf->render();
+
+            $safeInvoiceNumber = preg_replace('/[^A-Za-z0-9\-_]/', '_', (string)$data['invoice']['invoice_number']);
+            return [
+                'ok' => true,
+                'filename' => $safeInvoiceNumber . '.pdf',
+                'content' => $dompdf->output(),
+                'invoice' => $data['invoice'],
+                'invoice_meta' => $data['invoiceMeta'],
+                'issuer' => $data['issuer'],
+            ];
+        };
+
+        $sendInvoiceMailWithTemplate = static function (int $invoiceId, string $subjectTemplatePath, string $bodyTemplatePath, string $fallbackSubject, string $fallbackBody, string $auditAction) use ($loadInvoiceDocumentData, $renderInvoicePdfBinary): array {
+            $data = $loadInvoiceDocumentData($invoiceId);
+            if ($data === null) {
+                return ['ok' => false, 'error' => 'Rechnung nicht gefunden.'];
+            }
+            $invoice = $data['invoice'];
+            $issuer = $data['issuer'];
+            $invoiceMeta = $data['invoiceMeta'];
+
+            $to = trim((string)$invoice['email']);
+            if (!filter_var($to, FILTER_VALIDATE_EMAIL)) {
+                return ['ok' => false, 'error' => 'Keine gültige Empfänger-E-Mail vorhanden.'];
+            }
+
+            $pdfResult = $renderInvoicePdfBinary($invoiceId);
+            if (!$pdfResult['ok']) {
+                return ['ok' => false, 'error' => (string)$pdfResult['error']];
+            }
+
+            $subjectTemplate = is_file($subjectTemplatePath)
+                ? (string)file_get_contents($subjectTemplatePath)
+                : $fallbackSubject;
+            $bodyTemplate = is_file($bodyTemplatePath)
+                ? (string)file_get_contents($bodyTemplatePath)
+                : $fallbackBody;
+
+            $issuerFull = trim(implode("\n", array_filter([
+                (string)$issuer['name'],
+                trim((string)$issuer['street'] . ' ' . (string)$issuer['house_number']),
+                trim((string)$issuer['postal_code'] . ' ' . (string)$issuer['city']),
+                (string)$issuer['country'],
+                (string)$issuer['email'] !== '' ? 'E-Mail: ' . (string)$issuer['email'] : '',
+                (string)$issuer['phone'] !== '' ? 'Telefon: ' . (string)$issuer['phone'] : '',
+                (string)$issuer['website'] !== '' ? (string)$issuer['website'] : '',
+            ])));
+
+            $replacements = [
+                '{issuer.name}' => (string)$issuer['name'],
+                '{invoice.invoice_number}' => (string)$invoice['invoice_number'],
+                '{invoiceMeta.due_date}' => (string)$invoiceMeta['due_date'],
+                '{customer.first_name}' => (string)$invoice['first_name'],
+                '{customer.last_name}' => (string)$invoice['last_name'],
+                '{customer.name}' => (string)$invoice['customer_name'],
+                '{issuer.full}' => $issuerFull,
+                '{NUMMER}' => (string)$invoice['invoice_number'],
+                '{Vorname}' => (string)$invoice['first_name'],
+                '{zahlbar bis}' => (string)$invoiceMeta['due_date'],
+            ];
+
+            $subject = trim(strtr($subjectTemplate, $replacements));
+            $textBody = strtr($bodyTemplate, $replacements);
+            $htmlBody = nl2br(h($textBody), false);
+
+            $sendResult = smtp_send_mail($to, $subject, $htmlBody, $textBody, [[
+                'filename' => (string)$pdfResult['filename'],
+                'mime' => 'application/pdf',
+                'content' => (string)$pdfResult['content'],
+            ]]);
+            if (!$sendResult['ok']) {
+                return ['ok' => false, 'error' => (string)$sendResult['error']];
+            }
+            if (!empty($sendResult['skipped'])) {
+                return ['ok' => true, 'skipped' => true];
+            }
+
+            db()->prepare('UPDATE invoices SET mailed_at = NOW() WHERE id = ?')->execute([$invoiceId]);
+            audit_log($auditAction, 'invoice', $invoiceId, ['to' => $to, 'provider' => 'smtp', 'attachment' => 'pdf']);
+            return ['ok' => true];
+        };
+
+        $sendInvoiceByMail = static function (int $invoiceId) use ($sendInvoiceMailWithTemplate): array {
+            return $sendInvoiceMailWithTemplate(
+                $invoiceId,
+                __DIR__ . '/templates/mail_invoice_subject.txt',
+                __DIR__ . '/templates/mail_invoice_body.txt',
+                '{issuer.name}: Rechnung {invoice.invoice_number}',
+                "Hallo {customer.first_name}\n\nim Anhang senden wir die automatisiert unsere Rechnung zu. Bitte bezahle die Rechnung bis zum {invoiceMeta.due_date}.\n\nLiebe Grüsse,\n{issuer.full}",
+                'mail'
+            );
+        };
+
+        $sendInvoiceCancellationByMail = static function (int $invoiceId) use ($sendInvoiceMailWithTemplate): array {
+            return $sendInvoiceMailWithTemplate(
+                $invoiceId,
+                __DIR__ . '/templates/mail_invoice_cancel_subject.txt',
+                __DIR__ . '/templates/mail_invoice_cancel_body.txt',
+                '{issuer.name}: Storno der Rechnung {invoice.invoice_number}',
+                "Hallo {customer.first_name}\n\ndie Rechnung im Anhang mit der Nummer {invoice.invoice_number} wurde storniert. Bitte bezahle diese nicht mehr.\n\nLiebe Grüsse,\n{issuer.full}",
+                'mail_cancel'
+            );
+        };
+
+        $sendInvoiceReminderByMail = static function (int $invoiceId) use ($sendInvoiceMailWithTemplate): array {
+            return $sendInvoiceMailWithTemplate(
+                $invoiceId,
+                __DIR__ . '/templates/mail_invoice_reminder_subject.txt',
+                __DIR__ . '/templates/mail_invoice_reminder_body.txt',
+                '{issuer.name}: Zahlungserinnerung Rechnung {invoice.invoice_number}',
+                "Hallo {customer.first_name}\n\nzu der Rechnung {invoice.invoice_number} ist die Zahlung noch ausstehend. Bitte bezahle den offenen Betrag umgehend.\n\nLiebe Grüsse,\n{issuer.full}",
+                'mail_reminder'
+            );
+        };
+
         $createInvoiceForUser = static function (int $userId, ?string $dateFrom = null, ?string $dateTo = null) use ($nextInvoiceNumberForYear, $collectBillableFlightRows): array {
             $rows = $collectBillableFlightRows($userId, $dateFrom, $dateTo);
             if ($rows === []) {
@@ -1660,6 +1899,7 @@ switch ($page) {
 
             if ($action === 'generate_open_for_pilot') {
                 $userId = (int)($_POST['user_id'] ?? 0);
+                $sendByMail = ((string)($_POST['send_by_mail'] ?? '0')) === '1';
                 if ($userId <= 0) {
                     flash('error', 'Ungültiger Pilot.');
                     header('Location: index.php?page=invoices');
@@ -1668,6 +1908,18 @@ switch ($page) {
                 $result = $createInvoiceForUser($userId);
                 if ($result['ok']) {
                     flash('success', 'Rechnung erstellt: ' . $result['invoice_number']);
+                    if ($sendByMail) {
+                        $mailResult = $sendInvoiceByMail((int)$result['invoice_id']);
+                        if ($mailResult['ok']) {
+                            if (!empty($mailResult['skipped'])) {
+                                flash('success', 'Rechnung erstellt. SMTP ist deaktiviert, keine E-Mail versendet.');
+                            } else {
+                                flash('success', 'Rechnung per E-Mail versendet.');
+                            }
+                        } else {
+                            flash('error', 'Rechnung erstellt, E-Mail fehlgeschlagen: ' . (string)$mailResult['error']);
+                        }
+                    }
                 } else {
                     flash('error', (string)$result['message']);
                 }
@@ -1703,6 +1955,14 @@ switch ($page) {
                     exit;
                 }
 
+                $cancelMailResult = $sendInvoiceCancellationByMail($invoiceId);
+                if (!$cancelMailResult['ok']) {
+                    flash('error', 'Storno-Mail fehlgeschlagen, Storno wurde nicht durchgeführt: ' . (string)$cancelMailResult['error']);
+                    header('Location: index.php?page=invoices');
+                    exit;
+                }
+                $cancelMailSkipped = !empty($cancelMailResult['skipped']);
+
                 db()->beginTransaction();
                 try {
                     db()->prepare('UPDATE reservations SET invoice_id = NULL WHERE invoice_id = ?')->execute([$invoiceId]);
@@ -1728,12 +1988,45 @@ switch ($page) {
                     }
 
                     audit_log('cancel', 'invoice', $invoiceId, ['invoice_number' => $invoice['invoice_number']]);
-                    flash('success', 'Rechnung storniert. Stunden sind wieder unverrechnet.');
+                    if ($cancelMailSkipped) {
+                        flash('success', 'Rechnung storniert. SMTP ist deaktiviert, keine Storno-Mail versendet. Stunden sind wieder unverrechnet.');
+                    } else {
+                        flash('success', 'Rechnung storniert. Storno-Mail wurde versendet. Stunden sind wieder unverrechnet.');
+                    }
                 } catch (Throwable $e) {
                     if (db()->inTransaction()) {
                         db()->rollBack();
                     }
                     flash('error', 'Rechnung konnte nicht storniert werden.');
+                }
+            }
+
+            if ($action === 'send_reminder') {
+                $invoiceId = (int)($_POST['invoice_id'] ?? 0);
+                if ($invoiceId <= 0) {
+                    flash('error', 'Ungültige Rechnung.');
+                    header('Location: index.php?page=invoices');
+                    exit;
+                }
+
+                $invoiceStmt = db()->prepare('SELECT payment_status FROM invoices WHERE id = ?');
+                $invoiceStmt->execute([$invoiceId]);
+                $status = (string)$invoiceStmt->fetchColumn();
+                if ($status !== 'overdue') {
+                    flash('error', 'Zahlungserinnerung ist nur bei überfälligen Rechnungen erlaubt.');
+                    header('Location: index.php?page=invoices');
+                    exit;
+                }
+
+                $reminderResult = $sendInvoiceReminderByMail($invoiceId);
+                if ($reminderResult['ok']) {
+                    if (!empty($reminderResult['skipped'])) {
+                        flash('success', 'SMTP ist deaktiviert, keine Zahlungserinnerung versendet.');
+                    } else {
+                        flash('success', 'Zahlungserinnerung wurde versendet.');
+                    }
+                } else {
+                    flash('error', 'Zahlungserinnerung fehlgeschlagen: ' . (string)$reminderResult['error']);
                 }
             }
 
@@ -1745,12 +2038,21 @@ switch ($page) {
 
                 if ($invoice) {
                     $subject = 'Rechnung ' . $invoice['invoice_number'];
-                    $message = "Ihre Rechnung {$invoice['invoice_number']} wurde erstellt.";
-                    @mail($invoice['email'], $subject, $message);
+                    $messageText = "Ihre Rechnung {$invoice['invoice_number']} wurde erstellt.";
+                    $messageHtml = '<p>Ihre Rechnung <strong>' . h((string)$invoice['invoice_number']) . '</strong> wurde erstellt.</p>';
+                    $sendResult = smtp_send_mail((string)$invoice['email'], $subject, $messageHtml, $messageText);
 
-                    db()->prepare('UPDATE invoices SET mailed_at = NOW() WHERE id = ?')->execute([$invoiceId]);
-                    audit_log('mail', 'invoice', $invoiceId, ['to' => $invoice['email']]);
-                    flash('success', 'E-Mail Versand angestossen (mail()).');
+                    if ($sendResult['ok']) {
+                        if (!empty($sendResult['skipped'])) {
+                            flash('success', 'SMTP ist deaktiviert, keine E-Mail versendet.');
+                        } else {
+                            db()->prepare('UPDATE invoices SET mailed_at = NOW() WHERE id = ?')->execute([$invoiceId]);
+                            audit_log('mail', 'invoice', $invoiceId, ['to' => $invoice['email'], 'provider' => 'smtp']);
+                            flash('success', 'E-Mail via SMTP versendet.');
+                        }
+                    } else {
+                        flash('error', 'SMTP Versand fehlgeschlagen: ' . (string)$sendResult['error']);
+                    }
                 }
             }
 

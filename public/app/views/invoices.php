@@ -10,13 +10,14 @@
       <tr>
         <th>Pilot</th>
         <th>Offene Stunden</th>
+        <th>Per Mail senden</th>
         <th>Aktion</th>
       </tr>
     </thead>
     <tbody>
       <?php if (empty($unbilledPilotHours)): ?>
         <tr>
-          <td colspan="3">Keine offenen Stunden vorhanden.</td>
+          <td colspan="4">Keine offenen Stunden vorhanden.</td>
         </tr>
       <?php else: ?>
         <?php foreach ($unbilledPilotHours as $row): ?>
@@ -28,7 +29,10 @@
             <td><a href="<?= h($pilotToggleHref) ?>"><?= h($row['pilot_name']) ?></a></td>
             <td><?= number_format((float)$row['open_hours'], 2, '.', '') ?> h</td>
             <td>
-              <form method="post" class="inline-form">
+              <input type="checkbox" form="generate-invoice-<?= (int)$row['pilot_user_id'] ?>" name="send_by_mail" value="1" checked>
+            </td>
+            <td>
+              <form method="post" class="inline-form" id="generate-invoice-<?= (int)$row['pilot_user_id'] ?>">
                 <input type="hidden" name="_csrf" value="<?= h(csrf_token()) ?>">
                 <input type="hidden" name="action" value="generate_open_for_pilot">
                 <input type="hidden" name="user_id" value="<?= (int)$row['pilot_user_id'] ?>">
@@ -118,6 +122,14 @@
                     </select>
                     <button class="btn-small">Setzen</button>
                   </form>
+                  <?php if (($i['payment_status'] ?? '') === 'overdue'): ?>
+                    <form method="post" class="inline-form">
+                      <input type="hidden" name="_csrf" value="<?= h(csrf_token()) ?>">
+                      <input type="hidden" name="action" value="send_reminder">
+                      <input type="hidden" name="invoice_id" value="<?= (int)$i['id'] ?>">
+                      <button type="submit" class="btn-small btn-danger-solid">Zahlungserinnerung</button>
+                    </form>
+                  <?php endif; ?>
                 </div>
                 <div class="invoice-actions-row">
                   <a class="btn-small" href="index.php?page=invoice_html&id=<?= (int)$i['id'] ?>" target="_blank">Rechnung HTML</a>
