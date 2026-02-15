@@ -142,31 +142,34 @@ switch ($page) {
         $upcomingReservations = [];
         $calendarStartDate = date('Y-m-d');
         $calendarEndDate = date('Y-m-d');
-        $calendarDaysCount = 7;
+        $userAgent = (string)($_SERVER['HTTP_USER_AGENT'] ?? '');
+        $isMobileDevice = (bool)preg_match('/Android|iPhone|iPad|iPod|Mobile/i', $userAgent);
+        $calendarDaysCount = $isMobileDevice ? 1 : 7;
         $calendarAircraft = [];
         $calendarReservationsByAircraft = [];
         $groupRestrictedPilot = is_group_restricted_pilot();
         $allowedAircraftIds = $groupRestrictedPilot ? permitted_aircraft_ids_for_user((int)current_user()['id']) : [];
 
         if ($showReservationsModule) {
-            $upcomingSql = "SELECT r.id, r.user_id, r.starts_at, r.ends_at, r.notes, a.immatriculation,
-                    CONCAT(u.first_name, ' ', u.last_name) AS pilot_name
-                FROM reservations r
-                JOIN aircraft a ON a.id = r.aircraft_id
-                JOIN users u ON u.id = r.user_id
-                WHERE r.status = 'booked' AND r.starts_at >= NOW()";
-            $upcomingParams = [];
-            $upcomingSql .= ' ORDER BY r.starts_at ASC, r.id ASC LIMIT 100';
-            $upcomingStmt = db()->prepare($upcomingSql);
-            $upcomingStmt->execute($upcomingParams);
-            $upcomingReservations = $upcomingStmt->fetchAll();
-
             $calendarStartInput = (string)($_GET['calendar_start'] ?? date('Y-m-d'));
             $calendarStartTs = strtotime($calendarStartInput . ' 00:00:00');
             if ($calendarStartTs === false) {
                 $calendarStartTs = strtotime(date('Y-m-d') . ' 00:00:00');
             }
             $calendarStartDate = date('Y-m-d', $calendarStartTs);
+
+            $upcomingSql = "SELECT r.id, r.user_id, r.starts_at, r.ends_at, r.notes, a.immatriculation,
+                    CONCAT(u.first_name, ' ', u.last_name) AS pilot_name
+                FROM reservations r
+                JOIN aircraft a ON a.id = r.aircraft_id
+                JOIN users u ON u.id = r.user_id
+                WHERE r.status = 'booked' AND r.ends_at >= ?";
+            $upcomingParams = [$calendarStartDate . ' 00:00:00'];
+            $upcomingSql .= ' ORDER BY r.starts_at ASC, r.id ASC LIMIT 100';
+            $upcomingStmt = db()->prepare($upcomingSql);
+            $upcomingStmt->execute($upcomingParams);
+            $upcomingReservations = $upcomingStmt->fetchAll();
+
             $calendarEndDate = date('Y-m-d', strtotime($calendarStartDate . ' +' . ($calendarDaysCount - 1) . ' days'));
             $calendarStartBound = $calendarStartDate . ' 00:00:00';
             $calendarEndBound = $calendarEndDate . ' 23:59:59';

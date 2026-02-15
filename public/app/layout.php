@@ -26,7 +26,6 @@ function render(string $title, string $view, array $data = []): void
       <?php if ($user): ?>
         <div class="user-chip">
           <a href="index.php?page=profile"><?= h($user['first_name'] . ' ' . $user['last_name']) ?></a>
-          <span>(<?= h(implode(', ', $user['roles'] ?? [])) ?>)</span>
           <a href="index.php?page=logout">Logout</a>
         </div>
       <?php endif; ?>
