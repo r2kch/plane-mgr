@@ -2,16 +2,24 @@
 declare(strict_types=1);
 
 $currency = (string)($invoiceMeta['currency'] ?? 'CHF');
-$netTotal = 0.0;
+$flightsSubtotal = 0.0;
 foreach ($items as $item) {
-    $netTotal += (float)$item['line_total'];
+    $flightsSubtotal += (float)$item['line_total'];
 }
-$netTotal = round($netTotal, 2);
-$vatAmount = 0.0;
-if (!empty($vat['enabled'])) {
-    $vatAmount = round($netTotal * ((float)$vat['rate_percent'] / 100), 2);
+$flightsSubtotal = round($flightsSubtotal, 2);
+$creditsSubtotal = 0.0;
+foreach (($credits ?? []) as $credit) {
+    $creditsSubtotal += (float)$credit['amount'];
 }
-$grossTotal = round($netTotal + $vatAmount, 2);
+$creditsSubtotal = round($creditsSubtotal, 2);
+
+$summaryFlights = round((float)($summary['flights_subtotal'] ?? $flightsSubtotal), 2);
+$summaryCredits = round((float)($summary['credits_total'] ?? $creditsSubtotal), 2);
+$summaryVat = round((float)($summary['vat_amount'] ?? 0), 2);
+if ($summaryVat === 0.0 && !empty($vat['enabled'])) {
+    $summaryVat = round(($summaryFlights - $summaryCredits) * ((float)$vat['rate_percent'] / 100), 2);
+}
+$summaryTotal = round((float)($summary['total_amount'] ?? ($summaryFlights - $summaryCredits + $summaryVat)), 2);
 $isPdf = (($renderMode ?? 'html') === 'pdf');
 ?>
 <!doctype html>
@@ -132,6 +140,39 @@ $isPdf = (($renderMode ?? 'html') === 'pdf');
     .items td.route-cell {
       white-space: nowrap;
     }
+    .credits {
+      margin-bottom: 8mm;
+    }
+    .credits h3 {
+      margin: 0 0 6px 0;
+      font-size: 1rem;
+    }
+    .credits table {
+      width: 100%;
+      border-collapse: collapse;
+      border: 1px solid #d9e0ea;
+      border-radius: 10px;
+      overflow: hidden;
+      font-size: 0.9rem;
+    }
+    .credits th, .credits td {
+      padding: 7px 8px;
+      border-bottom: 1px solid #e1e6ef;
+      text-align: left;
+    }
+    .credits th {
+      background: #f3f7fc;
+      color: #4f5d72;
+      font-size: 0.84rem;
+      text-transform: uppercase;
+      letter-spacing: .04em;
+    }
+    .credits td:last-child {
+      text-align: right;
+      white-space: nowrap;
+      font-weight: 700;
+    }
+    .credits tr:last-child td { border-bottom: 0; }
     .totals {
       margin-left: auto;
       width: 360px;
@@ -216,6 +257,18 @@ $isPdf = (($renderMode ?? 'html') === 'pdf');
     .mode-pdf .items th,
     .mode-pdf .items td {
       padding: 5px 6px;
+    }
+    .mode-pdf .credits {
+      margin-bottom: 4mm;
+    }
+    .mode-pdf .credits h3 {
+      margin: 0 0 3px 0;
+      font-size: 0.9rem;
+    }
+    .mode-pdf .credits th,
+    .mode-pdf .credits td {
+      padding: 4px 6px;
+      font-size: 0.82rem;
     }
     .mode-pdf .totals {
       width: 320px;
@@ -303,6 +356,9 @@ $isPdf = (($renderMode ?? 'html') === 'pdf');
       </div>
     </section>
 
+    <section class="credits">
+      <h3>Flüge</h3>
+    </section>
     <table class="items">
       <thead>
         <tr>
@@ -337,22 +393,52 @@ $isPdf = (($renderMode ?? 'html') === 'pdf');
       </tbody>
     </table>
 
+    <?php if (!empty($credits)): ?>
+      <section class="credits">
+        <h3>Gutschriften</h3>
+        <table>
+          <thead>
+            <tr>
+              <th>Datum</th>
+              <th>Beschreibung</th>
+              <th>Betrag</th>
+            </tr>
+          </thead>
+          <tbody>
+            <?php foreach ($credits as $credit): ?>
+              <tr>
+                <td><?= h(date('d.m.Y', strtotime((string)$credit['credit_date']))) ?></td>
+                <td><?= h((string)$credit['description']) ?></td>
+                <td>- <?= h($currency) ?> <?= h(number_format((float)$credit['amount'], 2, '.', '')) ?></td>
+              </tr>
+            <?php endforeach; ?>
+          </tbody>
+        </table>
+      </section>
+    <?php endif; ?>
+
     <section class="totals">
       <table>
         <tbody>
           <tr>
-            <td>Zwischensumme</td>
-            <td><?= h($currency) ?> <?= h(number_format($netTotal, 2, '.', '')) ?></td>
+            <td>Zwischensumme Flüge</td>
+            <td><?= h($currency) ?> <?= h(number_format($summaryFlights, 2, '.', '')) ?></td>
           </tr>
+          <?php if (!empty($summaryCredits)): ?>
+            <tr>
+              <td>Abzug Gutschriften</td>
+              <td>- <?= h($currency) ?> <?= h(number_format($summaryCredits, 2, '.', '')) ?></td>
+            </tr>
+          <?php endif; ?>
           <?php if (!empty($vat['enabled'])): ?>
             <tr>
               <td>MWST <?= h(number_format((float)$vat['rate_percent'], 1, '.', '')) ?>%</td>
-              <td><?= h($currency) ?> <?= h(number_format($vatAmount, 2, '.', '')) ?></td>
+              <td><?= h($currency) ?> <?= h(number_format($summaryVat, 2, '.', '')) ?></td>
             </tr>
           <?php endif; ?>
           <tr>
             <td>Gesamtsumme</td>
-            <td><?= h($currency) ?> <?= h(number_format($grossTotal, 2, '.', '')) ?></td>
+            <td><?= h($currency) ?> <?= h(number_format($summaryTotal, 2, '.', '')) ?></td>
           </tr>
         </tbody>
       </table>

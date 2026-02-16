@@ -108,6 +108,9 @@ CREATE TABLE invoices (
   user_id INT NOT NULL,
   period_from DATE NOT NULL,
   period_to DATE NOT NULL,
+  flights_subtotal DECIMAL(10,2) NOT NULL DEFAULT 0.00,
+  credits_total DECIMAL(10,2) NOT NULL DEFAULT 0.00,
+  vat_amount DECIMAL(10,2) NOT NULL DEFAULT 0.00,
   total_amount DECIMAL(10,2) NOT NULL DEFAULT 0.00,
   payment_status ENUM('open', 'part_paid', 'paid', 'overdue') NOT NULL DEFAULT 'open',
   pdf_path VARCHAR(255) NULL,
@@ -133,6 +136,22 @@ CREATE TABLE invoice_items (
   line_total DECIMAL(10,2) NOT NULL,
   FOREIGN KEY (invoice_id) REFERENCES invoices(id) ON DELETE CASCADE,
   FOREIGN KEY (reservation_id) REFERENCES reservations(id)
+);
+
+CREATE TABLE credits (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  user_id INT NOT NULL,
+  credit_date DATE NOT NULL,
+  amount DECIMAL(10,2) NOT NULL,
+  description VARCHAR(255) NOT NULL,
+  notes VARCHAR(500) NULL,
+  invoice_id INT NULL,
+  created_by INT NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  FOREIGN KEY (user_id) REFERENCES users(id),
+  FOREIGN KEY (invoice_id) REFERENCES invoices(id) ON DELETE SET NULL,
+  FOREIGN KEY (created_by) REFERENCES users(id)
 );
 
 ALTER TABLE reservations

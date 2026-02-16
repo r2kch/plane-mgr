@@ -119,6 +119,24 @@ function db(): PDO
     $pdo->exec('ALTER TABLE invoice_items ADD COLUMN IF NOT EXISTS aircraft_immatriculation VARCHAR(30) NULL AFTER aircraft_type');
     $pdo->exec('ALTER TABLE invoice_items ADD COLUMN IF NOT EXISTS from_airfield VARCHAR(10) NULL AFTER aircraft_immatriculation');
     $pdo->exec('ALTER TABLE invoice_items ADD COLUMN IF NOT EXISTS to_airfield VARCHAR(10) NULL AFTER from_airfield');
+    $pdo->exec('ALTER TABLE invoices ADD COLUMN IF NOT EXISTS flights_subtotal DECIMAL(10,2) NOT NULL DEFAULT 0.00 AFTER period_to');
+    $pdo->exec('ALTER TABLE invoices ADD COLUMN IF NOT EXISTS credits_total DECIMAL(10,2) NOT NULL DEFAULT 0.00 AFTER flights_subtotal');
+    $pdo->exec('ALTER TABLE invoices ADD COLUMN IF NOT EXISTS vat_amount DECIMAL(10,2) NOT NULL DEFAULT 0.00 AFTER credits_total');
+    $pdo->exec("CREATE TABLE IF NOT EXISTS credits (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        user_id INT NOT NULL,
+        credit_date DATE NOT NULL,
+        amount DECIMAL(10,2) NOT NULL,
+        description VARCHAR(255) NOT NULL,
+        notes VARCHAR(500) NULL,
+        invoice_id INT NULL,
+        created_by INT NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        CONSTRAINT fk_credits_user FOREIGN KEY (user_id) REFERENCES users(id),
+        CONSTRAINT fk_credits_invoice FOREIGN KEY (invoice_id) REFERENCES invoices(id) ON DELETE SET NULL,
+        CONSTRAINT fk_credits_created_by FOREIGN KEY (created_by) REFERENCES users(id)
+    )");
     $pdo->exec("UPDATE invoices SET payment_status = 'open' WHERE payment_status = 'part_paid'");
     $pdo->exec('UPDATE reservation_flights SET is_billable = 1 WHERE is_billable IS NULL');
 

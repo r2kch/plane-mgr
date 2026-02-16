@@ -17,6 +17,7 @@ $modulePages = [
     'my_invoices' => 'billing',
     'accounting' => 'billing',
     'accounting_flights' => 'billing',
+    'credits' => 'billing',
     'rates' => 'billing',
     'invoices' => 'billing',
     'invoice_html' => 'billing',
@@ -185,6 +186,133 @@ switch ($page) {
             FROM aircraft
             ORDER BY immatriculation ASC")->fetchAll();
         render('Flüge', 'accounting_flights', compact('aircraft'));
+        break;
+
+    case 'credits':
+        require_role('admin', 'accounting');
+
+        if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+            if (!csrf_check($_POST['_csrf'] ?? null)) {
+                flash('error', 'Ungültiger Request.');
+                header('Location: index.php?page=credits');
+                exit;
+            }
+
+            $action = (string)($_POST['action'] ?? '');
+            $creditId = (int)($_POST['credit_id'] ?? 0);
+            $userId = (int)($_POST['user_id'] ?? 0);
+            $creditDate = trim((string)($_POST['credit_date'] ?? ''));
+            $amount = round((float)($_POST['amount'] ?? 0), 2);
+            $description = trim((string)($_POST['description'] ?? ''));
+            $notes = trim((string)($_POST['notes'] ?? ''));
+
+            if ($action === 'create_credit' || $action === 'update_credit') {
+                $pilotExistsStmt = db()->prepare("SELECT COUNT(*)
+                    FROM users u
+                    JOIN user_roles ur ON ur.user_id = u.id
+                    JOIN roles r ON r.id = ur.role_id
+                    WHERE u.id = ? AND u.is_active = 1 AND r.name = 'pilot'");
+                $pilotExistsStmt->execute([$userId]);
+                if ((int)$pilotExistsStmt->fetchColumn() === 0) {
+                    flash('error', 'Ungültiger Pilot.');
+                    header('Location: index.php?page=credits' . ($creditId > 0 ? '&edit_credit_id=' . $creditId : ''));
+                    exit;
+                }
+
+                $dateValid = DateTime::createFromFormat('Y-m-d', $creditDate) !== false;
+                if (!$dateValid || $amount <= 0 || $description === '') {
+                    flash('error', 'Bitte Datum, positiven Betrag und Beschreibung korrekt erfassen.');
+                    header('Location: index.php?page=credits' . ($creditId > 0 ? '&edit_credit_id=' . $creditId : ''));
+                    exit;
+                }
+            }
+
+            if ($action === 'create_credit') {
+                $stmt = db()->prepare('INSERT INTO credits (user_id, credit_date, amount, description, notes, created_by)
+                    VALUES (?, ?, ?, ?, ?, ?)');
+                $stmt->execute([$userId, $creditDate, $amount, $description, $notes !== '' ? $notes : null, (int)current_user()['id']]);
+                $newId = (int)db()->lastInsertId();
+                audit_log('create', 'credit', $newId, ['user_id' => $userId, 'amount' => $amount, 'credit_date' => $creditDate]);
+                flash('success', 'Gutschrift erfasst.');
+                header('Location: index.php?page=credits');
+                exit;
+            }
+
+            if ($action === 'update_credit') {
+                if ($creditId <= 0) {
+                    flash('error', 'Ungültige Gutschrift.');
+                    header('Location: index.php?page=credits');
+                    exit;
+                }
+                $openStmt = db()->prepare('SELECT id FROM credits WHERE id = ? AND invoice_id IS NULL');
+                $openStmt->execute([$creditId]);
+                if (!$openStmt->fetch()) {
+                    flash('error', 'Verrechnete Gutschriften können nicht bearbeitet werden.');
+                    header('Location: index.php?page=credits');
+                    exit;
+                }
+
+                $stmt = db()->prepare('UPDATE credits
+                    SET user_id = ?, credit_date = ?, amount = ?, description = ?, notes = ?
+                    WHERE id = ?');
+                $stmt->execute([$userId, $creditDate, $amount, $description, $notes !== '' ? $notes : null, $creditId]);
+                audit_log('update', 'credit', $creditId, ['user_id' => $userId, 'amount' => $amount, 'credit_date' => $creditDate]);
+                flash('success', 'Gutschrift aktualisiert.');
+                header('Location: index.php?page=credits');
+                exit;
+            }
+
+            if ($action === 'delete_credit') {
+                if ($creditId <= 0) {
+                    flash('error', 'Ungültige Gutschrift.');
+                    header('Location: index.php?page=credits');
+                    exit;
+                }
+                $openStmt = db()->prepare('SELECT id FROM credits WHERE id = ? AND invoice_id IS NULL');
+                $openStmt->execute([$creditId]);
+                if (!$openStmt->fetch()) {
+                    flash('error', 'Verrechnete Gutschriften können nicht gelöscht werden.');
+                    header('Location: index.php?page=credits');
+                    exit;
+                }
+                db()->prepare('DELETE FROM credits WHERE id = ? AND invoice_id IS NULL')->execute([$creditId]);
+                audit_log('delete', 'credit', $creditId);
+                flash('success', 'Gutschrift gelöscht.');
+                header('Location: index.php?page=credits');
+                exit;
+            }
+        }
+
+        $editCreditId = (int)($_GET['edit_credit_id'] ?? 0);
+        $editCredit = null;
+        if ($editCreditId > 0) {
+            $editStmt = db()->prepare('SELECT * FROM credits WHERE id = ? AND invoice_id IS NULL');
+            $editStmt->execute([$editCreditId]);
+            $editCredit = $editStmt->fetch() ?: null;
+        }
+
+        $pilots = db()->query("SELECT DISTINCT u.id, CONCAT(u.first_name, ' ', u.last_name) AS name
+            FROM users u
+            JOIN user_roles ur ON ur.user_id = u.id
+            JOIN roles r ON r.id = ur.role_id
+            WHERE r.name = 'pilot' AND u.is_active = 1
+            ORDER BY u.last_name ASC, u.first_name ASC")->fetchAll();
+
+        $credits = db()->query("SELECT c.*, CONCAT(u.first_name, ' ', u.last_name) AS pilot_name
+            FROM credits c
+            JOIN users u ON u.id = c.user_id
+            WHERE c.invoice_id IS NULL
+            ORDER BY c.credit_date DESC, c.id DESC")->fetchAll();
+
+        $settledCredits = db()->query("SELECT c.*, i.invoice_number, CONCAT(u.first_name, ' ', u.last_name) AS pilot_name
+            FROM credits c
+            JOIN users u ON u.id = c.user_id
+            JOIN invoices i ON i.id = c.invoice_id
+            ORDER BY c.credit_date DESC, c.id DESC
+            LIMIT 200")->fetchAll();
+
+        $defaultCreditDate = date('Y-m-d');
+        render('Gutschrift', 'credits', compact('pilots', 'credits', 'settledCredits', 'editCredit', 'defaultCreditDate'));
         break;
 
     case 'aircraft':
@@ -1779,6 +1907,16 @@ switch ($page) {
             return $rows;
         };
 
+        $collectOpenCredits = static function (int $userId): array {
+            $stmt = db()->prepare("SELECT id, user_id, credit_date, amount, description, notes
+                FROM credits
+                WHERE user_id = ?
+                  AND invoice_id IS NULL
+                ORDER BY credit_date ASC, id ASC");
+            $stmt->execute([$userId]);
+            return $stmt->fetchAll();
+        };
+
         $loadInvoiceDocumentData = static function (int $invoiceId): ?array {
             $stmt = db()->prepare('SELECT i.*, CONCAT(u.first_name, " ", u.last_name) AS customer_name, u.first_name, u.last_name, u.email,
                     u.street, u.house_number, u.postal_code, u.city, u.country_code, u.phone
@@ -1794,6 +1932,13 @@ switch ($page) {
             $itemsStmt = db()->prepare('SELECT * FROM invoice_items WHERE invoice_id = ? ORDER BY flight_date ASC, id ASC');
             $itemsStmt->execute([$invoiceId]);
             $items = $itemsStmt->fetchAll();
+
+            $creditsStmt = db()->prepare('SELECT id, credit_date, amount, description, notes
+                FROM credits
+                WHERE invoice_id = ?
+                ORDER BY credit_date ASC, id ASC');
+            $creditsStmt->execute([$invoiceId]);
+            $credits = $creditsStmt->fetchAll();
 
             $countryOptions = european_countries();
             $issuer = [
@@ -1841,12 +1986,36 @@ switch ($page) {
                 'phone' => (string)($invoice['phone'] ?? ''),
             ];
 
-            return compact('invoice', 'items', 'issuer', 'bank', 'vat', 'invoiceMeta', 'logoFilesystemPath', 'logoPublicPath', 'customerAddress');
+            $flightsSubtotal = array_reduce($items, static function (float $carry, array $item): float {
+                return $carry + (float)$item['line_total'];
+            }, 0.0);
+            $creditsTotal = array_reduce($credits, static function (float $carry, array $credit): float {
+                return $carry + (float)$credit['amount'];
+            }, 0.0);
+
+            $summary = [
+                'flights_subtotal' => round((float)($invoice['flights_subtotal'] ?? $flightsSubtotal), 2),
+                'credits_total' => round((float)($invoice['credits_total'] ?? $creditsTotal), 2),
+                'vat_amount' => round((float)($invoice['vat_amount'] ?? 0), 2),
+                'total_amount' => round((float)$invoice['total_amount'], 2),
+            ];
+
+            if ($summary['vat_amount'] === 0.0 && !empty($vat['enabled'])) {
+                $vatBase = $summary['flights_subtotal'] - $summary['credits_total'];
+                $summary['vat_amount'] = round($vatBase * ((float)$vat['rate_percent'] / 100), 2);
+            }
+            if ($summary['total_amount'] === 0.0) {
+                $summary['total_amount'] = round($summary['flights_subtotal'] - $summary['credits_total'] + $summary['vat_amount'], 2);
+            }
+
+            return compact('invoice', 'items', 'credits', 'summary', 'issuer', 'bank', 'vat', 'invoiceMeta', 'logoFilesystemPath', 'logoPublicPath', 'customerAddress');
         };
 
         $renderInvoiceHtmlFromData = static function (array $data, string $renderMode): string {
             $invoice = $data['invoice'];
             $items = $data['items'];
+            $credits = $data['credits'] ?? [];
+            $summary = $data['summary'] ?? [];
             $issuer = $data['issuer'];
             $bank = $data['bank'];
             $vat = $data['vat'];
@@ -2018,11 +2187,12 @@ switch ($page) {
             );
         };
 
-        $createInvoiceForUser = static function (int $userId, ?string $dateFrom = null, ?string $dateTo = null) use ($nextInvoiceNumberForYear, $collectBillableFlightRows): array {
+        $createInvoiceForUser = static function (int $userId, ?string $dateFrom = null, ?string $dateTo = null) use ($nextInvoiceNumberForYear, $collectBillableFlightRows, $collectOpenCredits): array {
             $rows = $collectBillableFlightRows($userId, $dateFrom, $dateTo);
             if ($rows === []) {
                 return ['ok' => false, 'message' => 'Keine abrechenbaren Flüge gefunden.'];
             }
+            $openCredits = $collectOpenCredits($userId);
 
             $periodFrom = date('Y-m-d', strtotime((string)$rows[0]['start_time']));
             $periodTo = date('Y-m-d', strtotime((string)$rows[count($rows) - 1]['landing_time']));
@@ -2080,14 +2250,37 @@ switch ($page) {
                     }
                 }
 
+                $creditsTotal = 0.0;
+                if ($openCredits !== []) {
+                    $creditIds = [];
+                    foreach ($openCredits as $creditRow) {
+                        $creditIds[] = (int)$creditRow['id'];
+                        $creditsTotal += (float)$creditRow['amount'];
+                    }
+
+                    $creditPlaceholders = implode(',', array_fill(0, count($creditIds), '?'));
+                    $creditParams = array_merge([$invoiceId], $creditIds);
+                    db()->prepare("UPDATE credits SET invoice_id = ? WHERE id IN ($creditPlaceholders)")->execute($creditParams);
+                }
+
                 $vatEnabled = (bool)config('invoice.vat.enabled', false);
                 $vatPercent = (float)config('invoice.vat.rate_percent', 0);
-                $vatAmount = $vatEnabled ? round($total * ($vatPercent / 100), 2) : 0.0;
-                $grossTotal = round($total + $vatAmount, 2);
-                db()->prepare('UPDATE invoices SET total_amount = ? WHERE id = ?')->execute([$grossTotal, $invoiceId]);
+                $subtotalAfterCredits = round($total - $creditsTotal, 2);
+                $vatAmount = $vatEnabled ? round($subtotalAfterCredits * ($vatPercent / 100), 2) : 0.0;
+                $grossTotal = round($subtotalAfterCredits + $vatAmount, 2);
+                db()->prepare('UPDATE invoices
+                    SET flights_subtotal = ?, credits_total = ?, vat_amount = ?, total_amount = ?
+                    WHERE id = ?')->execute([round($total, 2), round($creditsTotal, 2), $vatAmount, $grossTotal, $invoiceId]);
                 db()->commit();
 
-                audit_log('create', 'invoice', $invoiceId, ['invoice_number' => $invoiceNumber, 'rows' => count($rows), 'net' => round($total, 2), 'vat' => $vatAmount, 'gross' => $grossTotal]);
+                audit_log('create', 'invoice', $invoiceId, [
+                    'invoice_number' => $invoiceNumber,
+                    'rows' => count($rows),
+                    'flights_subtotal' => round($total, 2),
+                    'credits_total' => round($creditsTotal, 2),
+                    'vat' => $vatAmount,
+                    'gross' => $grossTotal
+                ]);
                 return ['ok' => true, 'invoice_number' => $invoiceNumber, 'invoice_id' => $invoiceId];
             } catch (Throwable $e) {
                 if (db()->inTransaction()) {
@@ -2188,6 +2381,7 @@ switch ($page) {
                 db()->beginTransaction();
                 try {
                     db()->prepare('UPDATE reservations SET invoice_id = NULL WHERE invoice_id = ?')->execute([$invoiceId]);
+                    db()->prepare('UPDATE credits SET invoice_id = NULL WHERE invoice_id = ?')->execute([$invoiceId]);
                     db()->prepare('DELETE FROM invoice_items WHERE invoice_id = ?')->execute([$invoiceId]);
                     db()->prepare('DELETE FROM invoices WHERE id = ?')->execute([$invoiceId]);
                     db()->commit();
@@ -2566,6 +2760,13 @@ switch ($page) {
         $itemsStmt->execute([$invoiceId]);
         $items = $itemsStmt->fetchAll();
 
+        $creditsStmt = db()->prepare('SELECT id, credit_date, amount, description, notes
+            FROM credits
+            WHERE invoice_id = ?
+            ORDER BY credit_date ASC, id ASC');
+        $creditsStmt->execute([$invoiceId]);
+        $credits = $creditsStmt->fetchAll();
+
         $countryOptions = european_countries();
         $issuer = [
             'name' => (string)config('invoice.issuer.name', ''),
@@ -2611,6 +2812,25 @@ switch ($page) {
             'phone' => (string)($invoice['phone'] ?? ''),
         ];
 
+        $flightsSubtotal = array_reduce($items, static function (float $carry, array $item): float {
+            return $carry + (float)$item['line_total'];
+        }, 0.0);
+        $creditsTotal = array_reduce($credits, static function (float $carry, array $credit): float {
+            return $carry + (float)$credit['amount'];
+        }, 0.0);
+        $summary = [
+            'flights_subtotal' => round((float)($invoice['flights_subtotal'] ?? $flightsSubtotal), 2),
+            'credits_total' => round((float)($invoice['credits_total'] ?? $creditsTotal), 2),
+            'vat_amount' => round((float)($invoice['vat_amount'] ?? 0), 2),
+            'total_amount' => round((float)$invoice['total_amount'], 2),
+        ];
+        if ($summary['vat_amount'] === 0.0 && !empty($vat['enabled'])) {
+            $summary['vat_amount'] = round(($summary['flights_subtotal'] - $summary['credits_total']) * ((float)$vat['rate_percent'] / 100), 2);
+        }
+        if ($summary['total_amount'] === 0.0) {
+            $summary['total_amount'] = round($summary['flights_subtotal'] - $summary['credits_total'] + $summary['vat_amount'], 2);
+        }
+
         $renderMode = $page === 'invoice_pdf' ? 'pdf' : 'html';
         $logoSrc = '';
         if ($renderMode === 'pdf' && $logoPublicPath !== '' && is_file($logoFilesystemPath)) {
@@ -2633,7 +2853,7 @@ switch ($page) {
             $logoSrc = $logoPublicPath;
         }
 
-        $viewData = compact('invoice', 'items', 'issuer', 'bank', 'vat', 'invoiceMeta', 'logoSrc', 'customerAddress', 'renderMode');
+        $viewData = compact('invoice', 'items', 'credits', 'summary', 'issuer', 'bank', 'vat', 'invoiceMeta', 'logoSrc', 'customerAddress', 'renderMode');
         extract($viewData, EXTR_SKIP);
         ob_start();
         include __DIR__ . '/app/views/invoice_pdf.php';

@@ -10,6 +10,11 @@
     <p>Offene Stunden einsehen und Rechnungen erstellen.</p>
     <a class="btn-small" href="index.php?page=invoices">Öffnen</a>
   </article>
+  <article class="card">
+    <h3>Gutschrift</h3>
+    <p>Spesen/Barausgaben erfassen und offen verwalten.</p>
+    <a class="btn-small" href="index.php?page=credits">Öffnen</a>
+  </article>
   <?php if (has_role('admin')): ?>
     <article class="card">
       <h3>Preise</h3>

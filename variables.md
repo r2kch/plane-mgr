@@ -28,6 +28,19 @@ Diese Variablen stehen in `public/templates/invoice_layout.php` zur Verfügung.
   - `unit_price`
   - `line_total`
 
+- `$credits` (array von Gutschriftenzeilen)
+  - `id`
+  - `credit_date` (`Y-m-d`)
+  - `amount` (positiver Betrag, wird als Abzug verwendet)
+  - `description`
+  - `notes` (optional)
+
+- `$summary` (array, Summenbereich Rechnung)
+  - `flights_subtotal`
+  - `credits_total`
+  - `vat_amount`
+  - `total_amount`
+
 ## Empfänger/Kunde
 
 - `$customerAddress` (array)
