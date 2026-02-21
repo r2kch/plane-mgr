@@ -109,7 +109,7 @@
       bis
       <?= h(date('d.m.Y H:i', strtotime((string)$completeLastReservationFlight['landing_time']))) ?>,
       <?= h((string)$completeLastReservationFlight['pilot_name']) ?>,
-      <?= h((string)$completeLastReservationFlight['from_airfield']) ?> → <?= h((string)$completeLastReservationFlight['to_airfield']) ?>,
+      (<?= h(strtoupper((string)$completeLastReservationFlight['from_airfield'])) ?>) → (<?= h(strtoupper((string)$completeLastReservationFlight['to_airfield'])) ?>),
       Landungen <?= (int)($completeLastReservationFlight['landings_count'] ?? 1) ?>,
       Hobbs <?= h(sprintf('%d:%02d', $lastHobbsFromHours, $lastHobbsFromMinutes)) ?> → <?= h(sprintf('%d:%02d', $lastHobbsToHours, $lastHobbsToMinutes)) ?>
     </div>
@@ -168,7 +168,7 @@
       <div class="capture-actions">
         <button type="submit" class="btn-small" name="complete_mode" value="next">Speichern und nächsten Flug</button>
         <button type="submit" class="btn-small btn-danger-solid" name="complete_mode" value="finish">Abschluss und Reservation beenden</button>
-        <button type="submit" class="btn-small btn-danger-solid" name="complete_mode" value="finish_without_flight" formnovalidate>Abschluss ohne zustäzlichen Flug</button>
+        <button type="submit" class="btn-small btn-danger-solid" name="complete_mode" value="finish_without_flight" formnovalidate id="finish-without-flight" data-starts-at-ts="<?= (int)strtotime((string)($completeReservation['starts_at'] ?? '')) ?>">Abschluss ohne zusätzlichen Flug</button>
         <a class="btn-ghost btn-small" href="index.php?page=reservations&month=<?= h($month) ?>">Abbrechen</a>
       </div>
     </div>
@@ -176,6 +176,20 @@
 
   <script>
     (function () {
+      const finishWithoutFlight = document.getElementById('finish-without-flight');
+      if (finishWithoutFlight) {
+        finishWithoutFlight.addEventListener('click', (event) => {
+          const startsAtTs = Number(finishWithoutFlight.getAttribute('data-starts-at-ts') || '0');
+          if (!Number.isFinite(startsAtTs) || startsAtTs <= 0) return;
+          if (Date.now() < (startsAtTs * 1000)) {
+            const ok = confirm('Möchtest du die Reservation löschen? Vor Startzeit wird die Reservation gelöscht.');
+            if (!ok) {
+              event.preventDefault();
+            }
+          }
+        });
+      }
+
       function parseHobbsToMinutes(value) {
         const text = String(value || '').trim();
         const match = text.match(/^(\d+):([0-5]\d)$/);

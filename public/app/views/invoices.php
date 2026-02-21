@@ -71,8 +71,8 @@
             <td><?= h(date('d.m.Y H:i', strtotime($f['start_time']))) ?></td>
             <td><?= h(date('d.m.Y H:i', strtotime($f['landing_time']))) ?></td>
             <td><?= h($f['immatriculation']) ?></td>
-            <td><?= h($f['from_airfield']) ?></td>
-            <td><?= h($f['to_airfield']) ?></td>
+            <td>(<?= h(strtoupper((string)$f['from_airfield'])) ?>)</td>
+            <td>(<?= h(strtoupper((string)$f['to_airfield'])) ?>)</td>
           </tr>
         <?php endforeach; ?>
       </tbody>

@@ -113,7 +113,12 @@
               $pilotName = trim((string)$booking['pilot_name']);
               $noteText = trim((string)($booking['notes'] ?? ''));
               $barText = trim($pilotName . ($noteText !== '' ? ' - ' . $noteText : ''));
-              $tooltipText = 'Pilot: ' . $pilotName . ($noteText !== '' ? ' | Notiz: ' . $noteText : '');
+              $tooltipText = 'Pilot: ' . $pilotName;
+              $tooltipText .= ' | Start: ' . date('d.m.Y H:i', $startTs);
+              $tooltipText .= ' | Ende: ' . date('d.m.Y H:i', $endTs);
+              if ($noteText !== '') {
+                  $tooltipText .= ' | Notiz: ' . $noteText;
+              }
             ?>
             <div class="timeline-bar" style="left: <?= h(number_format($leftPercent, 4, '.', '')) ?>%; width: <?= h(number_format($widthPercent, 4, '.', '')) ?>%;" title="<?= h($tooltipText) ?>" data-tooltip="<?= h($tooltipText) ?>">
               <span><?= h($barText) ?></span>

@@ -394,7 +394,13 @@ $isPdf = (($renderMode ?? 'html') === 'pdf');
           <?php foreach ($items as $item): ?>
             <?php
             $flightDate = (string)($item['flight_date'] ?? '');
-            $route = trim((string)($item['from_airfield'] ?? '') . ((string)($item['from_airfield'] ?? '') !== '' || (string)($item['to_airfield'] ?? '') !== '' ? ' - ' : '') . (string)($item['to_airfield'] ?? ''));
+            $fromAirfield = strtoupper((string)($item['from_airfield'] ?? ''));
+            $toAirfield = strtoupper((string)($item['to_airfield'] ?? ''));
+            $route = trim(
+                ($fromAirfield !== '' ? '(' . $fromAirfield . ')' : '')
+                . (($fromAirfield !== '' || $toAirfield !== '') ? ' - ' : '')
+                . ($toAirfield !== '' ? '(' . $toAirfield . ')' : '')
+            );
             $aircraftTypeLabel = trim((string)($item['aircraft_immatriculation'] ?? '') . ' / ' . (string)($item['aircraft_type'] ?? ''));
             ?>
             <tr>

@@ -1,5 +1,8 @@
 <h2>Flüge</h2>
 <p>Logbuch pro Flugzeug öffnen und Flüge als verrechenbar oder nicht verrechenbar markieren.</p>
+<div class="section-head-actions">
+  <a class="btn-small btn-danger-solid" href="index.php?page=manual_flight">Flug händisch eintragen</a>
+</div>
 
 <div class="table-wrap">
   <table class="entries-table">

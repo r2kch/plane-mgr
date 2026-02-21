@@ -33,8 +33,8 @@
                 <?php endforeach; ?>
               </select>
             </td>
-            <td><input form="edit-flight-<?= (int)$f['id'] ?>" name="from_airfield" maxlength="10" value="<?= h($f['from_airfield']) ?>" required></td>
-            <td><input form="edit-flight-<?= (int)$f['id'] ?>" name="to_airfield" maxlength="10" value="<?= h($f['to_airfield']) ?>" required></td>
+            <td><input form="edit-flight-<?= (int)$f['id'] ?>" name="from_airfield" maxlength="10" value="<?= h(strtoupper((string)$f['from_airfield'])) ?>" required></td>
+            <td><input form="edit-flight-<?= (int)$f['id'] ?>" name="to_airfield" maxlength="10" value="<?= h(strtoupper((string)$f['to_airfield'])) ?>" required></td>
             <td><input form="edit-flight-<?= (int)$f['id'] ?>" type="number" name="landings_count" min="1" step="1" value="<?= (int)($f['landings_count'] ?? 1) ?>" required></td>
             <td><input form="edit-flight-<?= (int)$f['id'] ?>" name="hobbs_start" pattern="^[0-9]+:[0-5][0-9]$" value="<?= h($f['hobbs_start_clock']) ?>" required></td>
             <td><input form="edit-flight-<?= (int)$f['id'] ?>" name="hobbs_end" pattern="^[0-9]+:[0-5][0-9]$" value="<?= h($f['hobbs_end_clock']) ?>" required></td>
@@ -65,8 +65,8 @@
             <td><?= h(date('d.m.Y H:i', strtotime($f['start_time']))) ?></td>
             <td><?= h(date('d.m.Y H:i', strtotime($f['landing_time']))) ?></td>
             <td><?= h($f['pilot_name']) ?></td>
-            <td><?= h($f['from_airfield']) ?></td>
-            <td><?= h($f['to_airfield']) ?></td>
+            <td>(<?= h(strtoupper((string)$f['from_airfield'])) ?>)</td>
+            <td>(<?= h(strtoupper((string)$f['to_airfield'])) ?>)</td>
             <td><?= (int)($f['landings_count'] ?? 1) ?></td>
             <td><?= h($f['hobbs_start_clock']) ?></td>
             <td><?= h($f['hobbs_end_clock']) ?></td>

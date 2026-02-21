@@ -146,7 +146,7 @@ switch ($page) {
                     CONCAT(u.first_name, ' ', u.last_name) AS pilot_name
                 FROM reservations r
                 JOIN users u ON u.id = r.user_id
-                WHERE r.status = 'booked'
+                WHERE r.status IN ('booked', 'completed')
                   AND r.starts_at <= ?
                   AND r.ends_at >= ?";
             $calendarParams = [$calendarEndBound, $calendarStartBound];
@@ -1939,24 +1939,57 @@ switch ($page) {
                 }
 
                 if ($isWithoutAdditionalFlight) {
-                    $savedFlightCountStmt = db()->prepare('SELECT COUNT(*) FROM reservation_flights WHERE reservation_id = ?');
-                    $savedFlightCountStmt->execute([$reservationId]);
-                    $savedFlightCount = (int)$savedFlightCountStmt->fetchColumn();
-                    if ($savedFlightCount === 0) {
-                        flash('error', 'Mindestens ein Flug muss erfasst werden.');
-                        header('Location: index.php?page=reservations&month=' . urlencode($month) . '&complete_id=' . $reservationId);
+                    $nowTs = time();
+                    $startsAtTs = strtotime((string)$reservation['starts_at']);
+                    $endsAtTs = strtotime((string)$reservation['ends_at']);
+                    $nowSql = date('Y-m-d H:i:s', $nowTs);
+
+                    if ($startsAtTs !== false && $nowTs < $startsAtTs) {
+                        db()->prepare('DELETE FROM reservations WHERE id = ?')->execute([$reservationId]);
+                        audit_log('delete', 'reservation', $reservationId, ['mode' => 'finish_without_flight', 'reason' => 'before_start']);
+                        flash('success', 'Reservierung liegt in der Zukunft und wurde gelöscht (Abschluss vor Startzeit).');
+                        header('Location: index.php?page=reservations&month=' . urlencode($month));
                         exit;
                     }
 
+                    $savedFlightCountStmt = db()->prepare('SELECT COUNT(*) FROM reservation_flights WHERE reservation_id = ?');
+                    $savedFlightCountStmt->execute([$reservationId]);
+                    $savedFlightCount = (int)$savedFlightCountStmt->fetchColumn();
                     $totalStmt = db()->prepare('SELECT COALESCE(SUM(hobbs_hours), 0) FROM reservation_flights WHERE reservation_id = ?');
                     $totalStmt->execute([$reservationId]);
                     $totalHobbsHours = round((float)$totalStmt->fetchColumn(), 2);
 
-                    db()->prepare("UPDATE reservations SET status = 'completed', hours = ? WHERE id = ?")
-                        ->execute([$totalHobbsHours, $reservationId]);
+                    $lastLandingStmt = db()->prepare('SELECT MAX(landing_time) FROM reservation_flights WHERE reservation_id = ?');
+                    $lastLandingStmt->execute([$reservationId]);
+                    $lastLanding = $lastLandingStmt->fetchColumn();
+                    $lastLandingTs = $lastLanding ? strtotime((string)$lastLanding) : false;
 
-                    audit_log('complete', 'reservation', $reservationId, ['flights' => $savedFlightCount, 'hobbs_hours' => $totalHobbsHours, 'mode' => 'without_additional_flight']);
-                    flash('success', 'Reservierung ohne zusätzlichen Flug abgeschlossen.');
+                    $newEndsAt = (string)$reservation['ends_at'];
+                    $shouldShorten = $endsAtTs !== false && $lastLandingTs !== false && $lastLandingTs <= $endsAtTs;
+                    if ($shouldShorten) {
+                        $newEndsAt = date('Y-m-d H:i:s', $lastLandingTs);
+                    }
+
+                    db()->prepare("UPDATE reservations SET status = 'completed', hours = ?, ends_at = ? WHERE id = ?")
+                        ->execute([$totalHobbsHours, $newEndsAt, $reservationId]);
+
+                    if ($savedFlightCount === 0) {
+                        audit_log('complete', 'reservation', $reservationId, [
+                            'flights' => 0,
+                            'hobbs_hours' => $totalHobbsHours,
+                            'mode' => 'without_additional_flight',
+                            'ends_at' => $newEndsAt,
+                        ]);
+                        flash('success', 'Kein Flug eingetragen. Reservierung abgeschlossen' . ($shouldShorten ? ' (Endzeit auf letzten Flug gesetzt).' : '.'));
+                    } else {
+                        audit_log('complete', 'reservation', $reservationId, [
+                            'flights' => $savedFlightCount,
+                            'hobbs_hours' => $totalHobbsHours,
+                            'mode' => 'without_additional_flight',
+                            'ends_at' => $newEndsAt,
+                        ]);
+                        flash('success', 'Reservierung ohne zusätzlichen Flug abgeschlossen' . ($shouldShorten ? ' (Endzeit auf letzten Flug gesetzt).' : '.'));
+                    }
                     header('Location: index.php?page=reservations&month=' . urlencode($month));
                     exit;
                 }
@@ -1993,8 +2026,8 @@ switch ($page) {
                 $flights = [];
                 for ($i = 0; $i < $count; $i++) {
                     $pilotId = (int)($flightPilotIds[$i] ?? 0);
-                    $from = trim((string)($flightFrom[$i] ?? ''));
-                    $to = trim((string)($flightTo[$i] ?? ''));
+                    $from = strtoupper(trim((string)($flightFrom[$i] ?? '')));
+                    $to = strtoupper(trim((string)($flightTo[$i] ?? '')));
                     $startTime = trim((string)($flightStart[$i] ?? ''));
                     $landingTime = trim((string)($flightLanding[$i] ?? ''));
                     $landingsCount = (int)($flightLandingsCount[$i] ?? 0);
@@ -2090,8 +2123,18 @@ switch ($page) {
                     $totalHobbsHours = round((float)$totalStmt->fetchColumn(), 2);
 
                     if ($isCompleteNow) {
-                        db()->prepare("UPDATE reservations SET status = 'completed', hours = ? WHERE id = ?")
-                            ->execute([$totalHobbsHours, $reservationId]);
+                        $endsAtTs = strtotime((string)$reservation['ends_at']);
+                        $lastLandingStmt = db()->prepare('SELECT MAX(landing_time) FROM reservation_flights WHERE reservation_id = ?');
+                        $lastLandingStmt->execute([$reservationId]);
+                        $lastLanding = $lastLandingStmt->fetchColumn();
+                        $lastLandingTs = $lastLanding ? strtotime((string)$lastLanding) : false;
+                        $newEndsAt = (string)$reservation['ends_at'];
+                        $shouldShorten = $endsAtTs !== false && $lastLandingTs !== false && $lastLandingTs <= $endsAtTs;
+                        if ($shouldShorten) {
+                            $newEndsAt = date('Y-m-d H:i:s', $lastLandingTs);
+                        }
+                        db()->prepare("UPDATE reservations SET status = 'completed', hours = ?, ends_at = ? WHERE id = ?")
+                            ->execute([$totalHobbsHours, $newEndsAt, $reservationId]);
                     }
                     db()->commit();
 
