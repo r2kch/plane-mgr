@@ -3,7 +3,7 @@
 Klassische PHP/MySQL-Reservations- und Abrechnungssoftware für eine Flugsportgruppe
 
 ## Enthaltene Funktionen
-- Login mit Mehrfachrollen: `admin`, `pilot`, `accounting`
+- Login mit Mehrfachrollen: `admin`, `pilot`, `accounting`, `board`, `member`
 - Benutzerverwaltung (Admin): Benutzer anlegen, mehrere Rollen vergeben, aktiv/deaktiviert, Passwort setzen
 - Reservierungen pro Flugzeug (anlegen, bearbeiten, löschen) inkl. Durchführung
 - Reservierungen nur für Rollen `pilot` und `admin`
@@ -55,6 +55,14 @@ In `public/Config.php` können Module für alle Benutzer global aktiviert/deakti
     'reservations' => true,
     'billing' => true,
     'audit' => true,
+],
+```
+
+- News-Rollensteuerung in `public/Config.php`:
+```php
+'news' => [
+    'author_roles' => ['admin', 'board'],
+    'allowed_tags' => ['b','strong','i','em','u','span','p','br','ul','ol','li','div'],
 ],
 ```
 
