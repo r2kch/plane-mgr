@@ -63,6 +63,8 @@
         <label class="checkline"><input type="checkbox" name="roles[]" value="pilot" checked data-pilot-toggle="create"><span>Pilot</span></label>
         <label class="checkline"><input type="checkbox" name="roles[]" value="accounting"><span>Buchhaltung</span></label>
         <label class="checkline"><input type="checkbox" name="roles[]" value="admin"><span>Admin</span></label>
+        <label class="checkline"><input type="checkbox" name="roles[]" value="board"><span>Vorstand</span></label>
+        <label class="checkline"><input type="checkbox" name="roles[]" value="member"><span>Mitglied</span></label>
       </div>
     </label>
     <label class="pilot-groups" data-pilot-target="create">Gruppen (nur für Pilot)
@@ -204,6 +206,8 @@ foreach ($users as $candidate) {
         <label class="checkline"><input type="checkbox" name="roles[]" value="pilot" <?= in_array('pilot', $openUser['roles'], true) ? 'checked' : '' ?> data-pilot-toggle="edit"><span>Pilot</span></label>
         <label class="checkline"><input type="checkbox" name="roles[]" value="accounting" <?= in_array('accounting', $openUser['roles'], true) ? 'checked' : '' ?>><span>Buchhaltung</span></label>
         <label class="checkline"><input type="checkbox" name="roles[]" value="admin" <?= in_array('admin', $openUser['roles'], true) ? 'checked' : '' ?>><span>Admin</span></label>
+        <label class="checkline"><input type="checkbox" name="roles[]" value="board" <?= in_array('board', $openUser['roles'], true) ? 'checked' : '' ?>><span>Vorstand</span></label>
+        <label class="checkline"><input type="checkbox" name="roles[]" value="member" <?= in_array('member', $openUser['roles'], true) ? 'checked' : '' ?>><span>Mitglied</span></label>
       </div>
     </label>
     <label class="pilot-groups" data-pilot-target="edit">Gruppen (nur für Pilot)

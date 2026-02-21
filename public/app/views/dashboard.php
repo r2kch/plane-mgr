@@ -170,6 +170,23 @@
       </tbody>
     </table>
   </div>
+
+  <?php if (!empty($latestNews)): ?>
+    <h3>Neueste News</h3>
+    <article class="card">
+      <h4><?= h((string)$latestNews['title']) ?></h4>
+      <div class="muted" style="margin-bottom:8px;">
+        <?= h(date('d.m.Y H:i', strtotime((string)$latestNews['created_at']))) ?>
+        <?php if (!empty($latestNews['author_name'])): ?>
+          · <?= h((string)$latestNews['author_name']) ?>
+        <?php endif; ?>
+      </div>
+      <div class="cell-wrap"><?= $latestNews['body_html'] ?></div>
+      <div style="margin-top:8px;">
+        <a class="btn-small" href="index.php?page=news">Alle News</a>
+      </div>
+    </article>
+  <?php endif; ?>
 <?php endif; ?>
 
 <?php if (!$showBillingModule && !$showReservationsModule): ?>

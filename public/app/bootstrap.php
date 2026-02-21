@@ -139,6 +139,21 @@ function db(): PDO
     )");
     $pdo->exec("UPDATE invoices SET payment_status = 'open' WHERE payment_status = 'part_paid'");
     $pdo->exec('UPDATE reservation_flights SET is_billable = 1 WHERE is_billable IS NULL');
+    $pdo->exec("CREATE TABLE IF NOT EXISTS news (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        title VARCHAR(200) NOT NULL,
+        body_html MEDIUMTEXT NOT NULL,
+        created_by INT NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        CONSTRAINT fk_news_created_by FOREIGN KEY (created_by) REFERENCES users(id)
+    )");
+
+    $roleSeed = ['admin', 'pilot', 'accounting', 'board', 'member'];
+    $roleStmt = $pdo->prepare('INSERT IGNORE INTO roles (name) VALUES (?)');
+    foreach ($roleSeed as $roleName) {
+        $roleStmt->execute([$roleName]);
+    }
 
     $fkStmt = $pdo->query("SELECT COUNT(*) FROM information_schema.TABLE_CONSTRAINTS
         WHERE CONSTRAINT_SCHEMA = DATABASE()
@@ -150,6 +165,83 @@ function db(): PDO
     }
 
     return $pdo;
+}
+
+function can_manage_news(): bool
+{
+    $allowedRoles = config('news.author_roles', ['admin']);
+    if (!is_array($allowedRoles)) {
+        $allowedRoles = ['admin'];
+    }
+    foreach ($allowedRoles as $roleName) {
+        if (has_role((string)$roleName)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+function sanitize_news_html(string $html): string
+{
+    $allowedTags = config('news.allowed_tags', ['b', 'strong', 'i', 'em', 'u', 'span', 'p', 'br', 'ul', 'ol', 'li']);
+    if (!is_array($allowedTags)) {
+        $allowedTags = ['b', 'strong', 'i', 'em', 'u', 'span', 'p', 'br', 'ul', 'ol', 'li'];
+    }
+    $allowed = array_fill_keys(array_map('strtolower', $allowedTags), true);
+
+    $doc = new DOMDocument('1.0', 'UTF-8');
+    libxml_use_internal_errors(true);
+    $doc->loadHTML('<?xml encoding="utf-8" ?>' . $html, LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD);
+    libxml_clear_errors();
+
+    $sanitizeNode = static function (DOMNode $node) use (&$sanitizeNode, $allowed): void {
+        if ($node instanceof DOMElement) {
+            $tagName = strtolower($node->tagName);
+            if (!isset($allowed[$tagName])) {
+                $parent = $node->parentNode;
+                if ($parent) {
+                    while ($node->firstChild) {
+                        $parent->insertBefore($node->firstChild, $node);
+                    }
+                    $parent->removeChild($node);
+                }
+                return;
+            }
+
+            $allowedStyle = '';
+            if ($tagName === 'span' && $node->hasAttribute('style')) {
+                $style = (string)$node->getAttribute('style');
+                if (preg_match('/color\s*:\s*([^;]+)/i', $style, $match)) {
+                    $colorValue = trim($match[1]);
+                    if (preg_match('/^(#[0-9a-fA-F]{3,6}|rgb(a)?\\([0-9\\s,\\.%%]+\\)|[a-zA-Z]+)$/', $colorValue)) {
+                        $allowedStyle = 'color: ' . $colorValue;
+                    }
+                }
+            }
+
+            while ($node->attributes->length > 0) {
+                $node->removeAttributeNode($node->attributes->item(0));
+            }
+            if ($allowedStyle !== '') {
+                $node->setAttribute('style', $allowedStyle);
+            }
+        }
+
+        $child = $node->firstChild;
+        while ($child) {
+            $next = $child->nextSibling;
+            $sanitizeNode($child);
+            $child = $next;
+        }
+    };
+
+    $sanitizeNode($doc);
+
+    $result = '';
+    foreach ($doc->childNodes as $childNode) {
+        $result .= $doc->saveHTML($childNode);
+    }
+    return trim($result);
 }
 
 function h(string $value): string
@@ -482,6 +574,8 @@ function role_permissions(): array
         'admin' => ['all'],
         'pilot' => ['reservation.create', 'reservation.complete.own', 'calendar.view'],
         'accounting' => ['calendar.view', 'invoice.create', 'invoice.send', 'invoice.status.update'],
+        'board' => [],
+        'member' => [],
     ];
 }
 

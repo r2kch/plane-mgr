@@ -255,7 +255,7 @@
                 <?php if ($canComplete): ?>
                   <a class="btn-small" href="index.php?page=reservations&month=<?= h($month) ?>&complete_id=<?= (int)$r['id'] ?>">Durchgeführt</a>
                 <?php endif; ?>
-                <?php if (($isMine || has_role('admin')) && $isFuture): ?>
+                <?php if ((has_role('admin') || $isMine) && ($isFuture || has_role('admin'))): ?>
                   <button name="action" value="delete" class="btn-ghost btn-small">Löschen</button>
                 <?php endif; ?>
               </form>

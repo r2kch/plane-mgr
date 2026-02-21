@@ -6,6 +6,7 @@ Klassische PHP/MySQL-Reservations- und Abrechnungssoftware für eine Flugsportgr
 - Login mit Mehrfachrollen: `admin`, `pilot`, `accounting`
 - Benutzerverwaltung (Admin): Benutzer anlegen, mehrere Rollen vergeben, aktiv/deaktiviert, Passwort setzen
 - Reservierungen pro Flugzeug (anlegen, bearbeiten, löschen) inkl. Durchführung
+- Reservierungen nur für Rollen `pilot` und `admin`
 - Reservierungs-Benachrichtigungen per E-Mail an den Pilot:
   - bei Neu und Änderung mit ICS-Anhang (Kalenderimport)
   - bei Storno ohne ICS-Anhang
@@ -15,6 +16,7 @@ Klassische PHP/MySQL-Reservations- und Abrechnungssoftware für eine Flugsportgr
 - Gutschriften (Spesen/Barausgaben) für Admin/Buchhaltung:
   - Erfassung/Bearbeitung/Löschung unverrechneter Gutschriften
   - automatische Verrechnung als Abzug in der nächsten Rechnung
+- News (HTML-Beiträge) mit Rollensteuerung über `Config.php`
 - Rechnungserzeugung aus offenen Stunden (pro Pilot)
 - Rechnungsstorno setzt verknüpfte Reservierungen und Gutschriften wieder auf unverrechnet zurück
 - Zahlungsstatus (`open`, `paid`, `overdue`)
@@ -60,6 +62,7 @@ In `public/Config.php` können Module für alle Benutzer global aktiviert/deakti
   - Menü `Reservierungen` ausgeblendet
   - Seite `index.php?page=reservations` gesperrt
   - Dashboard: Kalender + zukünftige Reservierungen ausgeblendet
+  - News bleibt davon unberührt
 
 - `billing = false`:
   - Menüs `Meine Rechnungen`, `Preise`, `Abrechnung`, `Gutschrift` ausgeblendet

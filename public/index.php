@@ -104,6 +104,7 @@ switch ($page) {
         $calendarReservationsByAircraft = [];
         $groupRestrictedPilot = is_group_restricted_pilot();
         $allowedAircraftIds = $groupRestrictedPilot ? permitted_aircraft_ids_for_user((int)current_user()['id']) : [];
+        $latestNews = null;
 
         if ($showReservationsModule) {
             $calendarStartInput = (string)($_GET['calendar_start'] ?? date('Y-m-d'));
@@ -133,8 +134,9 @@ switch ($page) {
                 FROM aircraft
                 WHERE status = 'active'
                 ORDER BY immatriculation ASC")->fetchAll();
+            $canReserve = has_role('admin') || can('reservation.create');
             foreach ($calendarAircraft as &$aircraftRow) {
-                $aircraftRow['can_link'] = !$groupRestrictedPilot || in_array((int)$aircraftRow['id'], $allowedAircraftIds, true);
+                $aircraftRow['can_link'] = $canReserve && (!$groupRestrictedPilot || in_array((int)$aircraftRow['id'], $allowedAircraftIds, true));
             }
             unset($aircraftRow);
 
@@ -157,6 +159,14 @@ switch ($page) {
             }
         }
 
+        $newsStmt = db()->query("SELECT n.id, n.title, n.body_html, n.created_at,
+                CONCAT(u.first_name, ' ', u.last_name) AS author_name
+            FROM news n
+            JOIN users u ON u.id = n.created_by
+            ORDER BY n.created_at DESC
+            LIMIT 1");
+        $latestNews = $newsStmt->fetch() ?: null;
+
         render('Dashboard', 'dashboard', compact(
             'counts',
             'showReservationsModule',
@@ -166,8 +176,92 @@ switch ($page) {
             'calendarEndDate',
             'calendarDaysCount',
             'calendarAircraft',
-            'calendarReservationsByAircraft'
+            'calendarReservationsByAircraft',
+            'latestNews'
         ));
+        break;
+
+    case 'news':
+        $canManageNews = can_manage_news();
+        $editNewsId = (int)($_GET['edit_id'] ?? 0);
+        $editNews = null;
+        if ($editNewsId > 0) {
+            $editStmt = db()->prepare('SELECT * FROM news WHERE id = ?');
+            $editStmt->execute([$editNewsId]);
+            $editNews = $editStmt->fetch() ?: null;
+        }
+
+        if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+            if (!csrf_check($_POST['_csrf'] ?? null)) {
+                flash('error', 'Ungültiger Request.');
+                header('Location: index.php?page=news');
+                exit;
+            }
+
+            if (!$canManageNews) {
+                flash('error', 'Kein Zugriff.');
+                header('Location: index.php?page=news');
+                exit;
+            }
+
+            $action = (string)($_POST['action'] ?? '');
+            $newsId = (int)($_POST['news_id'] ?? 0);
+            $title = trim((string)($_POST['title'] ?? ''));
+            $bodyHtml = (string)($_POST['body_html'] ?? '');
+            $bodyHtml = sanitize_news_html($bodyHtml);
+
+            if ($action === 'create_news') {
+                if ($title === '' || $bodyHtml === '') {
+                    flash('error', 'Titel und Beitrag sind erforderlich.');
+                    header('Location: index.php?page=news');
+                    exit;
+                }
+
+                $stmt = db()->prepare('INSERT INTO news (title, body_html, created_by) VALUES (?, ?, ?)');
+                $stmt->execute([$title, $bodyHtml, (int)current_user()['id']]);
+                $newId = (int)db()->lastInsertId();
+                audit_log('create', 'news', $newId, ['title' => $title]);
+                flash('success', 'News erstellt.');
+                header('Location: index.php?page=news');
+                exit;
+            }
+
+            if ($action === 'update_news') {
+                if ($newsId <= 0 || $title === '' || $bodyHtml === '') {
+                    flash('error', 'Ungültige Eingaben.');
+                    header('Location: index.php?page=news' . ($newsId > 0 ? '&edit_id=' . $newsId : ''));
+                    exit;
+                }
+
+                $stmt = db()->prepare('UPDATE news SET title = ?, body_html = ? WHERE id = ?');
+                $stmt->execute([$title, $bodyHtml, $newsId]);
+                audit_log('update', 'news', $newsId, ['title' => $title]);
+                flash('success', 'News aktualisiert.');
+                header('Location: index.php?page=news');
+                exit;
+            }
+
+            if ($action === 'delete_news') {
+                if ($newsId <= 0) {
+                    flash('error', 'Ungültige News.');
+                    header('Location: index.php?page=news');
+                    exit;
+                }
+                db()->prepare('DELETE FROM news WHERE id = ?')->execute([$newsId]);
+                audit_log('delete', 'news', $newsId);
+                flash('success', 'News gelöscht.');
+                header('Location: index.php?page=news');
+                exit;
+            }
+        }
+
+        $newsList = db()->query("SELECT n.*, CONCAT(u.first_name, ' ', u.last_name) AS author_name
+            FROM news n
+            JOIN users u ON u.id = n.created_by
+            ORDER BY n.created_at DESC
+            LIMIT 200")->fetchAll();
+
+        render('News', 'news', compact('newsList', 'canManageNews', 'editNews'));
         break;
 
     case 'admin':
@@ -769,7 +863,7 @@ switch ($page) {
                 $groupIds = array_values(array_intersect($validGroupIds, $groupIds));
                 $password = (string)($_POST['password'] ?? '');
 
-                $validRoles = ['admin', 'pilot', 'accounting'];
+                $validRoles = ['admin', 'pilot', 'accounting', 'board', 'member'];
                 $roles = array_values(array_intersect($validRoles, $roles));
 
                 if ($firstName === '' || $lastName === '' || $email === '' || count($roles) === 0 || strlen($password) < 8) {
@@ -826,7 +920,7 @@ switch ($page) {
                 $groupIds = array_values(array_intersect($validGroupIds, $groupIds));
                 $isActive = ((string)($_POST['is_active'] ?? '1')) === '1' ? 1 : 0;
                 $newPassword = (string)($_POST['new_password'] ?? '');
-                $validRoles = ['admin', 'pilot', 'accounting'];
+                $validRoles = ['admin', 'pilot', 'accounting', 'board', 'member'];
                 $roles = array_values(array_intersect($validRoles, $roles));
 
                 if ($userId <= 0 || $firstName === '' || $lastName === '' || $email === '' || count($roles) === 0) {
@@ -1305,7 +1399,13 @@ switch ($page) {
             }
 
             $action = $_POST['action'] ?? '';
-            if ($action === 'create' && can('reservation.create')) {
+            if ($action === 'create' && !can('reservation.create')) {
+                flash('error', 'Keine Berechtigung für Reservierungen.');
+                header('Location: index.php?page=reservations&month=' . urlencode($month));
+                exit;
+            }
+
+            if ($action === 'create') {
                 $aircraftId = (int)$_POST['aircraft_id'];
                 if (has_role('admin')) {
                     $userId = (int)($_POST['user_id'] ?? (int)current_user()['id']);

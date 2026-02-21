@@ -34,6 +34,7 @@ function render(string $title, string $view, array $data = []): void
     <?php if ($user): ?>
       <nav class="nav-grid">
         <a href="index.php">Dashboard</a>
+        <a href="index.php?page=news">News</a>
         <?php if (module_enabled('reservations')): ?><a href="index.php?page=reservations">Reservierungen</a><?php endif; ?>
         <?php if (module_enabled('billing')): ?><a href="index.php?page=my_invoices">Meine Rechnungen</a><?php endif; ?>
         <a href="index.php?page=members">Mitglieder</a>

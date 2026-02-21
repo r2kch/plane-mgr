@@ -3,7 +3,7 @@ CREATE TABLE roles (
   name VARCHAR(50) NOT NULL UNIQUE
 );
 
-INSERT INTO roles (name) VALUES ('admin'), ('pilot'), ('accounting');
+INSERT INTO roles (name) VALUES ('admin'), ('pilot'), ('accounting'), ('board'), ('member');
 
 CREATE TABLE users (
   id INT AUTO_INCREMENT PRIMARY KEY,
@@ -171,4 +171,14 @@ CREATE TABLE audit_logs (
   meta_json TEXT NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (actor_user_id) REFERENCES users(id)
+);
+
+CREATE TABLE news (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  title VARCHAR(200) NOT NULL,
+  body_html MEDIUMTEXT NOT NULL,
+  created_by INT NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  FOREIGN KEY (created_by) REFERENCES users(id)
 );
