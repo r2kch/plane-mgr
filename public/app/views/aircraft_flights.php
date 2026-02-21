@@ -16,6 +16,7 @@
         <th>Hobbs h</th>
         <th>Verrechenbar</th>
         <th>Reservierung</th>
+        <th>Rechnung</th>
         <th>Aktion</th>
       </tr>
     </thead>
@@ -46,6 +47,7 @@
               <?php endif; ?>
             </td>
             <td>#<?= (int)$f['reservation_id'] ?></td>
+            <td><?= $f['invoice_number'] ? h($f['invoice_number']) : '-' ?></td>
             <td>
               <div class="inline-form">
                 <form method="post" id="edit-flight-<?= (int)$f['id'] ?>">
@@ -77,18 +79,21 @@
               <?php endif; ?>
             </td>
             <td>#<?= (int)$f['reservation_id'] ?></td>
+            <td><?= $f['invoice_number'] ? h($f['invoice_number']) : '-' ?></td>
             <td>
               <div class="inline-form">
                 <a class="btn-small" href="index.php?page=aircraft_flights&aircraft_id=<?= (int)$aircraft['id'] ?>&edit_id=<?= (int)$f['id'] ?>">Bearbeiten</a>
-                <form method="post" class="inline-form">
-                  <input type="hidden" name="_csrf" value="<?= h(csrf_token()) ?>">
-                  <input type="hidden" name="action" value="toggle_billable">
-                  <input type="hidden" name="flight_id" value="<?= (int)$f['id'] ?>">
-                  <input type="hidden" name="is_billable" value="<?= (int)($f['is_billable'] ?? 1) === 1 ? '0' : '1' ?>">
-                  <button type="submit" class="btn-small<?= (int)($f['is_billable'] ?? 1) === 1 ? ' btn-danger-solid' : '' ?>">
-                    <?= (int)($f['is_billable'] ?? 1) === 1 ? 'Nicht verrechenbar' : 'Verrechenbar machen' ?>
-                  </button>
-                </form>
+                <?php if (empty($f['invoice_id'])): ?>
+                  <form method="post" class="inline-form">
+                    <input type="hidden" name="_csrf" value="<?= h(csrf_token()) ?>">
+                    <input type="hidden" name="action" value="toggle_billable">
+                    <input type="hidden" name="flight_id" value="<?= (int)$f['id'] ?>">
+                    <input type="hidden" name="is_billable" value="<?= (int)($f['is_billable'] ?? 1) === 1 ? '0' : '1' ?>">
+                    <button type="submit" class="btn-small<?= (int)($f['is_billable'] ?? 1) === 1 ? ' btn-danger-solid' : '' ?>">
+                      <?= (int)($f['is_billable'] ?? 1) === 1 ? 'Nicht verrechenbar' : 'Verrechenbar machen' ?>
+                    </button>
+                  </form>
+                <?php endif; ?>
                 <form method="post" class="inline-form" onsubmit="return confirm('Eintrag wirklich löschen?');">
                   <input type="hidden" name="_csrf" value="<?= h(csrf_token()) ?>">
                   <input type="hidden" name="action" value="delete_flight">

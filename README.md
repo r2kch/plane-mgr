@@ -16,8 +16,13 @@ Klassische PHP/MySQL-Reservations- und Abrechnungssoftware für eine Flugsportgr
 - Gutschriften (Spesen/Barausgaben) für Admin/Buchhaltung:
   - Erfassung/Bearbeitung/Löschung unverrechneter Gutschriften
   - automatische Verrechnung als Abzug in der nächsten Rechnung
+- Besondere Positionen (z. B. Mitgliederbeitrag) für Admin/Buchhaltung:
+  - Erfassung per Rolle oder Personen-Auswahl
+  - unverrechnete Positionen sind editier-/löschbar
+  - eigene Tabelle auf der Rechnung
 - News (HTML-Beiträge) mit Rollensteuerung über `Config.php`
-- Rechnungserzeugung aus offenen Stunden (pro Pilot)
+- Rechnungserzeugung aus offenen Stunden/Positionen (pro Pilot)
+- Sammelaktion: alle offenen Rechnungen erstellen und per Mail versenden
 - Rechnungsstorno setzt verknüpfte Reservierungen und Gutschriften wieder auf unverrechnet zurück
 - Zahlungsstatus (`open`, `paid`, `overdue`)
 - Rechnungsansicht (`invoice_pdf`) als HTML/PDF-Basis
@@ -73,8 +78,8 @@ In `public/Config.php` können Module für alle Benutzer global aktiviert/deakti
   - News bleibt davon unberührt
 
 - `billing = false`:
-  - Menüs `Meine Rechnungen`, `Preise`, `Abrechnung`, `Gutschrift` ausgeblendet
-  - Seiten `my_invoices`, `rates`, `invoices`, `invoice_pdf`, `manual_flight`, `accounting_flights`, `credits` gesperrt
+  - Menüs `Meine Rechnungen`, `Preise`, `Abrechnung`, `Gutschrift`, `Positionen` ausgeblendet
+  - Seiten `my_invoices`, `rates`, `invoices`, `invoice_pdf`, `manual_flight`, `accounting_flights`, `credits`, `positions` gesperrt
   - Dashboard: Karte `Offene Rechnungen` ausgeblendet
 
 - `audit = false`:

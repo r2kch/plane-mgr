@@ -15,6 +15,11 @@
     <p>Spesen/Barausgaben erfassen und offen verwalten.</p>
     <a class="btn-small" href="index.php?page=credits">Öffnen</a>
   </article>
+  <article class="card">
+    <h3>Positionen</h3>
+    <p>Besondere Positionen (z. B. Mitgliederbeiträge) verwalten.</p>
+    <a class="btn-small" href="index.php?page=positions">Öffnen</a>
+  </article>
   <?php if (has_role('admin')): ?>
     <article class="card">
       <h3>Preise</h3>

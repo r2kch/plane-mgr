@@ -109,6 +109,7 @@ CREATE TABLE invoices (
   period_from DATE NOT NULL,
   period_to DATE NOT NULL,
   flights_subtotal DECIMAL(10,2) NOT NULL DEFAULT 0.00,
+  positions_total DECIMAL(10,2) NOT NULL DEFAULT 0.00,
   credits_total DECIMAL(10,2) NOT NULL DEFAULT 0.00,
   vat_amount DECIMAL(10,2) NOT NULL DEFAULT 0.00,
   total_amount DECIMAL(10,2) NOT NULL DEFAULT 0.00,
@@ -142,6 +143,22 @@ CREATE TABLE credits (
   id INT AUTO_INCREMENT PRIMARY KEY,
   user_id INT NOT NULL,
   credit_date DATE NOT NULL,
+  amount DECIMAL(10,2) NOT NULL,
+  description VARCHAR(255) NOT NULL,
+  notes VARCHAR(500) NULL,
+  invoice_id INT NULL,
+  created_by INT NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  FOREIGN KEY (user_id) REFERENCES users(id),
+  FOREIGN KEY (invoice_id) REFERENCES invoices(id) ON DELETE SET NULL,
+  FOREIGN KEY (created_by) REFERENCES users(id)
+);
+
+CREATE TABLE flex_positions (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  user_id INT NOT NULL,
+  position_date DATE NOT NULL,
   amount DECIMAL(10,2) NOT NULL,
   description VARCHAR(255) NOT NULL,
   notes VARCHAR(500) NULL,

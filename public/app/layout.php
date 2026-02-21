@@ -57,6 +57,7 @@ function render(string $title, string $view, array $data = []): void
               <a href="index.php?page=accounting">Buchhaltung</a>
               <a href="index.php?page=accounting_flights">Flüge</a>
               <a href="index.php?page=credits">Gutschrift</a>
+              <a href="index.php?page=positions">Positionen</a>
               <a href="index.php?page=invoices">Abrechnung</a>
               <?php if (has_role('admin')): ?><a href="index.php?page=rates">Preise</a><?php endif; ?>
             </div>

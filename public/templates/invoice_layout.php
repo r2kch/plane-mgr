@@ -12,14 +12,20 @@ foreach (($credits ?? []) as $credit) {
     $creditsSubtotal += (float)$credit['amount'];
 }
 $creditsSubtotal = round($creditsSubtotal, 2);
+$positionsSubtotal = 0.0;
+foreach (($positions ?? []) as $pos) {
+    $positionsSubtotal += (float)$pos['amount'];
+}
+$positionsSubtotal = round($positionsSubtotal, 2);
 
 $summaryFlights = round((float)($summary['flights_subtotal'] ?? $flightsSubtotal), 2);
+$summaryPositions = round((float)($summary['positions_total'] ?? $positionsSubtotal), 2);
 $summaryCredits = round((float)($summary['credits_total'] ?? $creditsSubtotal), 2);
 $summaryVat = round((float)($summary['vat_amount'] ?? 0), 2);
 if ($summaryVat === 0.0 && !empty($vat['enabled'])) {
-    $summaryVat = round(($summaryFlights - $summaryCredits) * ((float)$vat['rate_percent'] / 100), 2);
+    $summaryVat = round(($summaryFlights + $summaryPositions - $summaryCredits) * ((float)$vat['rate_percent'] / 100), 2);
 }
-$summaryTotal = round((float)($summary['total_amount'] ?? ($summaryFlights - $summaryCredits + $summaryVat)), 2);
+$summaryTotal = round((float)($summary['total_amount'] ?? ($summaryFlights + $summaryPositions - $summaryCredits + $summaryVat)), 2);
 $isPdf = (($renderMode ?? 'html') === 'pdf');
 ?>
 <!doctype html>
@@ -140,14 +146,17 @@ $isPdf = (($renderMode ?? 'html') === 'pdf');
     .items td.route-cell {
       white-space: nowrap;
     }
-    .credits {
+    .credits,
+    .positions {
       margin-bottom: 8mm;
     }
-    .credits h3 {
+    .credits h3,
+    .positions h3 {
       margin: 0 0 6px 0;
       font-size: 1rem;
     }
-    .credits table {
+    .credits table,
+    .positions table {
       width: 100%;
       border-collapse: collapse;
       border: 1px solid #d9e0ea;
@@ -155,24 +164,28 @@ $isPdf = (($renderMode ?? 'html') === 'pdf');
       overflow: hidden;
       font-size: 0.9rem;
     }
-    .credits th, .credits td {
+    .credits th, .credits td,
+    .positions th, .positions td {
       padding: 7px 8px;
       border-bottom: 1px solid #e1e6ef;
       text-align: left;
     }
-    .credits th {
+    .credits th,
+    .positions th {
       background: #f3f7fc;
       color: #4f5d72;
       font-size: 0.84rem;
       text-transform: uppercase;
       letter-spacing: .04em;
     }
-    .credits td:last-child {
+    .credits td:last-child,
+    .positions td:last-child {
       text-align: right;
       white-space: nowrap;
       font-weight: 700;
     }
-    .credits tr:last-child td { border-bottom: 0; }
+    .credits tr:last-child td,
+    .positions tr:last-child td { border-bottom: 0; }
     .totals {
       margin-left: auto;
       width: 360px;
@@ -258,15 +271,19 @@ $isPdf = (($renderMode ?? 'html') === 'pdf');
     .mode-pdf .items td {
       padding: 5px 6px;
     }
-    .mode-pdf .credits {
+    .mode-pdf .credits,
+    .mode-pdf .positions {
       margin-bottom: 4mm;
     }
-    .mode-pdf .credits h3 {
+    .mode-pdf .credits h3,
+    .mode-pdf .positions h3 {
       margin: 0 0 3px 0;
       font-size: 0.9rem;
     }
     .mode-pdf .credits th,
-    .mode-pdf .credits td {
+    .mode-pdf .credits td,
+    .mode-pdf .positions th,
+    .mode-pdf .positions td {
       padding: 4px 6px;
       font-size: 0.82rem;
     }
@@ -393,6 +410,30 @@ $isPdf = (($renderMode ?? 'html') === 'pdf');
       </tbody>
     </table>
 
+    <?php if (!empty($positions)): ?>
+      <section class="positions">
+        <h3>Besondere Positionen</h3>
+        <table>
+          <thead>
+            <tr>
+              <th>Datum</th>
+              <th>Beschreibung</th>
+              <th>Betrag</th>
+            </tr>
+          </thead>
+          <tbody>
+            <?php foreach ($positions as $pos): ?>
+              <tr>
+                <td><?= h(date('d.m.Y', strtotime((string)$pos['position_date']))) ?></td>
+                <td><?= h((string)$pos['description']) ?></td>
+                <td><?= h($currency) ?> <?= h(number_format((float)$pos['amount'], 2, '.', '')) ?></td>
+              </tr>
+            <?php endforeach; ?>
+          </tbody>
+        </table>
+      </section>
+    <?php endif; ?>
+
     <?php if (!empty($credits)): ?>
       <section class="credits">
         <h3>Gutschriften</h3>
@@ -424,6 +465,12 @@ $isPdf = (($renderMode ?? 'html') === 'pdf');
             <td>Zwischensumme Flüge</td>
             <td><?= h($currency) ?> <?= h(number_format($summaryFlights, 2, '.', '')) ?></td>
           </tr>
+          <?php if (!empty($summaryPositions)): ?>
+            <tr>
+              <td>Besondere Positionen</td>
+              <td><?= h($currency) ?> <?= h(number_format($summaryPositions, 2, '.', '')) ?></td>
+            </tr>
+          <?php endif; ?>
           <?php if (!empty($summaryCredits)): ?>
             <tr>
               <td>Abzug Gutschriften</td>

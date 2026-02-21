@@ -1,15 +1,21 @@
 <h2>Abrechnung</h2>
 <div class="section-head-actions">
   <a class="btn-small btn-danger-solid" href="index.php?page=manual_flight">Flug händisch eintragen</a>
+  <form method="post" class="inline-form" onsubmit="return confirm('Alle Rechnungen erstellen und versenden?');">
+    <input type="hidden" name="_csrf" value="<?= h(csrf_token()) ?>">
+    <input type="hidden" name="action" value="generate_all_open">
+    <button type="submit" class="btn-small btn-danger-solid">Alle Rechnungen erstellen</button>
+  </form>
 </div>
 
-<h3>Piloten mit offenen Stunden</h3>
+<h3>Offene Positionen</h3>
 <div class="table-wrap">
   <table class="entries-table">
     <thead>
       <tr>
         <th>Pilot</th>
         <th>Offene Stunden</th>
+        <th>Offene Positionen</th>
         <th>Per Mail senden</th>
         <th>Aktion</th>
       </tr>
@@ -17,7 +23,7 @@
     <tbody>
       <?php if (empty($unbilledPilotHours)): ?>
         <tr>
-          <td colspan="4">Keine offenen Stunden vorhanden.</td>
+          <td colspan="5">Keine offenen Positionen vorhanden.</td>
         </tr>
       <?php else: ?>
         <?php foreach ($unbilledPilotHours as $row): ?>
@@ -28,6 +34,7 @@
           <tr>
             <td><a href="<?= h($pilotToggleHref) ?>"><?= h($row['pilot_name']) ?></a></td>
             <td><?= number_format((float)$row['open_hours'], 2, '.', '') ?> h</td>
+            <td><?= h((string)config('invoice.currency', 'CHF')) ?> <?= number_format((float)$row['open_positions'], 2, '.', '') ?></td>
             <td>
               <input type="checkbox" form="generate-invoice-<?= (int)$row['pilot_user_id'] ?>" name="send_by_mail" value="1" checked>
             </td>
@@ -66,6 +73,29 @@
             <td><?= h($f['immatriculation']) ?></td>
             <td><?= h($f['from_airfield']) ?></td>
             <td><?= h($f['to_airfield']) ?></td>
+          </tr>
+        <?php endforeach; ?>
+      </tbody>
+    </table>
+  </div>
+<?php endif; ?>
+<?php if (!empty($openPilotPositions)): ?>
+  <h3>Offene Positionen: <?= h($openPilotName) ?></h3>
+  <div class="table-wrap">
+    <table class="entries-table">
+      <thead>
+        <tr>
+          <th>Datum</th>
+          <th>Beschreibung</th>
+          <th>Betrag</th>
+        </tr>
+      </thead>
+      <tbody>
+        <?php foreach ($openPilotPositions as $p): ?>
+          <tr>
+            <td><?= h(date('d.m.Y', strtotime((string)$p['position_date']))) ?></td>
+            <td><?= h((string)$p['description']) ?></td>
+            <td><?= h((string)config('invoice.currency', 'CHF')) ?> <?= number_format((float)$p['amount'], 2, '.', '') ?></td>
           </tr>
         <?php endforeach; ?>
       </tbody>

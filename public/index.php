@@ -18,6 +18,7 @@ $modulePages = [
     'accounting' => 'billing',
     'accounting_flights' => 'billing',
     'credits' => 'billing',
+    'positions' => 'billing',
     'rates' => 'billing',
     'invoices' => 'billing',
     'invoice_html' => 'billing',
@@ -409,6 +410,175 @@ switch ($page) {
         render('Gutschrift', 'credits', compact('pilots', 'credits', 'settledCredits', 'editCredit', 'defaultCreditDate'));
         break;
 
+    case 'positions':
+        require_role('admin', 'accounting');
+
+        $rolesList = db()->query('SELECT name FROM roles ORDER BY name ASC')->fetchAll();
+        $activeUsers = db()->query("SELECT id, CONCAT(first_name, ' ', last_name) AS name
+            FROM users
+            WHERE is_active = 1
+            ORDER BY last_name ASC, first_name ASC")->fetchAll();
+
+        $editPositionId = (int)($_GET['edit_position_id'] ?? 0);
+        $editPosition = null;
+        if ($editPositionId > 0) {
+            $editStmt = db()->prepare('SELECT * FROM flex_positions WHERE id = ? AND invoice_id IS NULL');
+            $editStmt->execute([$editPositionId]);
+            $editPosition = $editStmt->fetch() ?: null;
+        }
+
+
+        if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+            if (!csrf_check($_POST['_csrf'] ?? null)) {
+                flash('error', 'Ungültiger Request.');
+                header('Location: index.php?page=positions');
+                exit;
+            }
+
+            $action = (string)($_POST['action'] ?? '');
+            $positionId = (int)($_POST['position_id'] ?? 0);
+            $description = trim((string)($_POST['description'] ?? ''));
+            $positionDate = trim((string)($_POST['position_date'] ?? ''));
+            $amount = round((float)($_POST['amount'] ?? 0), 2);
+            $notes = trim((string)($_POST['notes'] ?? ''));
+
+            $dateValid = DateTime::createFromFormat('Y-m-d', $positionDate) !== false;
+
+            if (in_array($action, ['create_positions', 'update_position'], true)) {
+                if (!$dateValid || $amount <= 0 || $description === '') {
+                    flash('error', 'Bitte Datum, positiven Betrag und Beschreibung korrekt erfassen.');
+                    header('Location: index.php?page=positions' . ($positionId > 0 ? '&edit_position_id=' . $positionId : ''));
+                    exit;
+                }
+            }
+
+            if ($action === 'update_position') {
+                if ($positionId <= 0) {
+                    flash('error', 'Ungültige Position.');
+                    header('Location: index.php?page=positions');
+                    exit;
+                }
+
+                $openStmt = db()->prepare('SELECT id FROM flex_positions WHERE id = ? AND invoice_id IS NULL');
+                $openStmt->execute([$positionId]);
+                if (!$openStmt->fetch()) {
+                    flash('error', 'Verrechnete Positionen können nicht bearbeitet werden.');
+                    header('Location: index.php?page=positions');
+                    exit;
+                }
+
+                $userId = (int)($_POST['user_id'] ?? 0);
+                if ($userId <= 0) {
+                    flash('error', 'Bitte einen Benutzer auswählen.');
+                    header('Location: index.php?page=positions&edit_position_id=' . $positionId);
+                    exit;
+                }
+
+                $stmt = db()->prepare('UPDATE flex_positions
+                    SET user_id = ?, position_date = ?, amount = ?, description = ?, notes = ?
+                    WHERE id = ?');
+                $stmt->execute([$userId, $positionDate, $amount, $description, $notes !== '' ? $notes : null, $positionId]);
+                audit_log('update', 'flex_position', $positionId, ['user_id' => $userId, 'amount' => $amount, 'position_date' => $positionDate]);
+                flash('success', 'Position aktualisiert.');
+                header('Location: index.php?page=positions');
+                exit;
+            }
+
+            if ($action === 'delete_position') {
+                if ($positionId <= 0) {
+                    flash('error', 'Ungültige Position.');
+                    header('Location: index.php?page=positions');
+                    exit;
+                }
+                $openStmt = db()->prepare('SELECT id FROM flex_positions WHERE id = ? AND invoice_id IS NULL');
+                $openStmt->execute([$positionId]);
+                if (!$openStmt->fetch()) {
+                    flash('error', 'Verrechnete Positionen können nicht gelöscht werden.');
+                    header('Location: index.php?page=positions');
+                    exit;
+                }
+                db()->prepare('DELETE FROM flex_positions WHERE id = ? AND invoice_id IS NULL')->execute([$positionId]);
+                audit_log('delete', 'flex_position', $positionId);
+                flash('success', 'Position gelöscht.');
+                header('Location: index.php?page=positions');
+                exit;
+            }
+
+            if ($action === 'create_positions') {
+                $scope = (string)($_POST['scope'] ?? 'role');
+                $userIdList = [];
+                if ($scope === 'role') {
+                    $roleNames = array_values(array_filter(array_map('strval', (array)($_POST['role_names'] ?? []))));
+                    if ($roleNames === []) {
+                        flash('error', 'Bitte mindestens eine Rolle auswählen.');
+                        header('Location: index.php?page=positions');
+                        exit;
+                    }
+                    $placeholders = implode(',', array_fill(0, count($roleNames), '?'));
+                    $stmt = db()->prepare("SELECT DISTINCT u.id
+                        FROM users u
+                        JOIN user_roles ur ON ur.user_id = u.id
+                        JOIN roles r ON r.id = ur.role_id
+                        WHERE r.name IN ($placeholders) AND u.is_active = 1");
+                    $stmt->execute($roleNames);
+                    $userIdList = array_map('intval', array_column($stmt->fetchAll(), 'id'));
+                } else {
+                    $userIdList = array_filter(array_map('intval', (array)($_POST['user_ids'] ?? [])));
+                }
+                if ($userIdList === []) {
+                    flash('error', 'Keine Benutzer ausgewählt.');
+                    header('Location: index.php?page=positions');
+                    exit;
+                }
+
+                db()->beginTransaction();
+                try {
+                    $stmt = db()->prepare('INSERT INTO flex_positions (user_id, position_date, amount, description, notes, created_by)
+                        VALUES (?, ?, ?, ?, ?, ?)');
+                    foreach ($userIdList as $userId) {
+                        $stmt->execute([$userId, $positionDate, $amount, $description, $notes !== '' ? $notes : null, (int)current_user()['id']]);
+                    }
+                    db()->commit();
+                    audit_log('create', 'flex_position', null, ['count' => count($userIdList), 'amount' => $amount, 'position_date' => $positionDate]);
+                    flash('success', 'Positionen erstellt: ' . count($userIdList));
+                    header('Location: index.php?page=positions');
+                    exit;
+                } catch (Throwable $e) {
+                    if (db()->inTransaction()) {
+                        db()->rollBack();
+                    }
+                    flash('error', 'Positionen konnten nicht erstellt werden.');
+                    header('Location: index.php?page=positions');
+                    exit;
+                }
+            }
+        }
+
+        $positions = db()->query("SELECT p.*, CONCAT(u.first_name, ' ', u.last_name) AS user_name
+            FROM flex_positions p
+            JOIN users u ON u.id = p.user_id
+            WHERE p.invoice_id IS NULL
+            ORDER BY p.position_date DESC, p.id DESC")->fetchAll();
+
+        $settledPositions = db()->query("SELECT p.*, i.invoice_number, CONCAT(u.first_name, ' ', u.last_name) AS user_name
+            FROM flex_positions p
+            JOIN users u ON u.id = p.user_id
+            JOIN invoices i ON i.id = p.invoice_id
+            ORDER BY p.position_date DESC, p.id DESC
+            LIMIT 200")->fetchAll();
+
+        $defaultPositionDate = date('Y-m-d');
+        render('Positionen', 'positions', compact(
+            'rolesList',
+            'activeUsers',
+            'positions',
+            'settledPositions',
+            'editPosition',
+            'editPositionId',
+            'defaultPositionDate'
+        ));
+        break;
+
     case 'aircraft':
         require_role('admin');
         $openAircraftId = (int)($_GET['open_aircraft_id'] ?? 0);
@@ -699,12 +869,12 @@ switch ($page) {
             $action = (string)($_POST['action'] ?? '');
             $flightId = (int)($_POST['flight_id'] ?? 0);
 
-            $flightOwnerStmt = db()->prepare("SELECT rf.id, rf.reservation_id, rf.is_billable
+        $flightOwnerStmt = db()->prepare("SELECT rf.id, rf.reservation_id, rf.is_billable, r.invoice_id
                 FROM reservation_flights rf
                 JOIN reservations r ON r.id = rf.reservation_id
                 WHERE rf.id = ? AND r.aircraft_id = ?");
-            $flightOwnerStmt->execute([$flightId, $aircraftId]);
-            $flightOwner = $flightOwnerStmt->fetch();
+        $flightOwnerStmt->execute([$flightId, $aircraftId]);
+        $flightOwner = $flightOwnerStmt->fetch();
 
             if (!$flightOwner) {
                 flash('error', 'Flug nicht gefunden.');
@@ -724,6 +894,11 @@ switch ($page) {
             }
 
             if ($action === 'toggle_billable') {
+                if (!empty($flightOwner['invoice_id'])) {
+                    flash('error', 'Verrechnete Flüge können nicht geändert werden.');
+                    header('Location: index.php?page=aircraft_flights&aircraft_id=' . $aircraftId);
+                    exit;
+                }
                 $newBillable = ((string)($_POST['is_billable'] ?? '1')) === '1' ? 1 : 0;
                 $oldBillable = (int)$flightOwner['is_billable'];
                 db()->prepare('UPDATE reservation_flights SET is_billable = ? WHERE id = ?')->execute([$newBillable, $flightId]);
@@ -798,11 +973,13 @@ switch ($page) {
             }
         }
 
-        $flightsStmt = db()->prepare("SELECT rf.*, r.id AS reservation_id,
+        $flightsStmt = db()->prepare("SELECT rf.*, r.id AS reservation_id, r.invoice_id,
+                i.invoice_number,
                 CONCAT(p.first_name, ' ', p.last_name) AS pilot_name
             FROM reservation_flights rf
             JOIN reservations r ON r.id = rf.reservation_id
             JOIN users p ON p.id = rf.pilot_user_id
+            LEFT JOIN invoices i ON i.id = r.invoice_id
             WHERE r.aircraft_id = ?
               AND r.status = 'completed'
             ORDER BY rf.start_time DESC, rf.id DESC");
@@ -2017,6 +2194,16 @@ switch ($page) {
             return $stmt->fetchAll();
         };
 
+        $collectOpenPositions = static function (int $userId): array {
+            $stmt = db()->prepare("SELECT id, user_id, position_date, amount, description, notes
+                FROM flex_positions
+                WHERE user_id = ?
+                  AND invoice_id IS NULL
+                ORDER BY position_date ASC, id ASC");
+            $stmt->execute([$userId]);
+            return $stmt->fetchAll();
+        };
+
         $loadInvoiceDocumentData = static function (int $invoiceId): ?array {
             $stmt = db()->prepare('SELECT i.*, CONCAT(u.first_name, " ", u.last_name) AS customer_name, u.first_name, u.last_name, u.email,
                     u.street, u.house_number, u.postal_code, u.city, u.country_code, u.phone
@@ -2039,6 +2226,13 @@ switch ($page) {
                 ORDER BY credit_date ASC, id ASC');
             $creditsStmt->execute([$invoiceId]);
             $credits = $creditsStmt->fetchAll();
+
+            $positionsStmt = db()->prepare('SELECT id, position_date, amount, description, notes
+                FROM flex_positions
+                WHERE invoice_id = ?
+                ORDER BY position_date ASC, id ASC');
+            $positionsStmt->execute([$invoiceId]);
+            $positions = $positionsStmt->fetchAll();
 
             $countryOptions = european_countries();
             $issuer = [
@@ -2089,32 +2283,37 @@ switch ($page) {
             $flightsSubtotal = array_reduce($items, static function (float $carry, array $item): float {
                 return $carry + (float)$item['line_total'];
             }, 0.0);
+            $positionsSubtotal = array_reduce($positions, static function (float $carry, array $pos): float {
+                return $carry + (float)$pos['amount'];
+            }, 0.0);
             $creditsTotal = array_reduce($credits, static function (float $carry, array $credit): float {
                 return $carry + (float)$credit['amount'];
             }, 0.0);
 
             $summary = [
                 'flights_subtotal' => round((float)($invoice['flights_subtotal'] ?? $flightsSubtotal), 2),
+                'positions_total' => round((float)($invoice['positions_total'] ?? $positionsSubtotal), 2),
                 'credits_total' => round((float)($invoice['credits_total'] ?? $creditsTotal), 2),
                 'vat_amount' => round((float)($invoice['vat_amount'] ?? 0), 2),
                 'total_amount' => round((float)$invoice['total_amount'], 2),
             ];
 
             if ($summary['vat_amount'] === 0.0 && !empty($vat['enabled'])) {
-                $vatBase = $summary['flights_subtotal'] - $summary['credits_total'];
+                $vatBase = $summary['flights_subtotal'] + $summary['positions_total'] - $summary['credits_total'];
                 $summary['vat_amount'] = round($vatBase * ((float)$vat['rate_percent'] / 100), 2);
             }
             if ($summary['total_amount'] === 0.0) {
-                $summary['total_amount'] = round($summary['flights_subtotal'] - $summary['credits_total'] + $summary['vat_amount'], 2);
+                $summary['total_amount'] = round($summary['flights_subtotal'] + $summary['positions_total'] - $summary['credits_total'] + $summary['vat_amount'], 2);
             }
 
-            return compact('invoice', 'items', 'credits', 'summary', 'issuer', 'bank', 'vat', 'invoiceMeta', 'logoFilesystemPath', 'logoPublicPath', 'customerAddress');
+            return compact('invoice', 'items', 'credits', 'positions', 'summary', 'issuer', 'bank', 'vat', 'invoiceMeta', 'logoFilesystemPath', 'logoPublicPath', 'customerAddress');
         };
 
         $renderInvoiceHtmlFromData = static function (array $data, string $renderMode): string {
             $invoice = $data['invoice'];
             $items = $data['items'];
             $credits = $data['credits'] ?? [];
+            $positions = $data['positions'] ?? [];
             $summary = $data['summary'] ?? [];
             $issuer = $data['issuer'];
             $bank = $data['bank'];
@@ -2287,16 +2486,30 @@ switch ($page) {
             );
         };
 
-        $createInvoiceForUser = static function (int $userId, ?string $dateFrom = null, ?string $dateTo = null) use ($nextInvoiceNumberForYear, $collectBillableFlightRows, $collectOpenCredits): array {
+        $createInvoiceForUser = static function (int $userId, ?string $dateFrom = null, ?string $dateTo = null) use ($nextInvoiceNumberForYear, $collectBillableFlightRows, $collectOpenCredits, $collectOpenPositions): array {
             $rows = $collectBillableFlightRows($userId, $dateFrom, $dateTo);
-            if ($rows === []) {
-                return ['ok' => false, 'message' => 'Keine abrechenbaren Flüge gefunden.'];
-            }
             $openCredits = $collectOpenCredits($userId);
+            $openPositions = $collectOpenPositions($userId);
+            if ($rows === [] && $openPositions === []) {
+                return ['ok' => false, 'message' => 'Keine abrechenbaren Positionen gefunden.'];
+            }
 
-            $periodFrom = date('Y-m-d', strtotime((string)$rows[0]['start_time']));
-            $periodTo = date('Y-m-d', strtotime((string)$rows[count($rows) - 1]['landing_time']));
-            $lastFlightYear = (int)date('Y', strtotime((string)$rows[count($rows) - 1]['landing_time']));
+            $periodDates = [];
+            if ($rows !== []) {
+                $periodDates[] = date('Y-m-d', strtotime((string)$rows[0]['start_time']));
+                $periodDates[] = date('Y-m-d', strtotime((string)$rows[count($rows) - 1]['landing_time']));
+            }
+            if ($openPositions !== []) {
+                $positionDates = array_map(static fn(array $pos): string => (string)$pos['position_date'], $openPositions);
+                sort($positionDates);
+                $periodDates[] = $positionDates[0];
+                $periodDates[] = $positionDates[count($positionDates) - 1];
+            }
+            sort($periodDates);
+            $periodFrom = $periodDates[0] ?? date('Y-m-d');
+            $periodTo = $periodDates[count($periodDates) - 1] ?? $periodFrom;
+            $lastActivityDate = $periodTo;
+            $lastFlightYear = (int)date('Y', strtotime($lastActivityDate));
             $invoiceNumber = $nextInvoiceNumberForYear($lastFlightYear);
 
             db()->beginTransaction();
@@ -2350,6 +2563,18 @@ switch ($page) {
                     }
                 }
 
+                $positionsTotal = 0.0;
+                if ($openPositions !== []) {
+                    $positionIds = [];
+                    foreach ($openPositions as $posRow) {
+                        $positionIds[] = (int)$posRow['id'];
+                        $positionsTotal += (float)$posRow['amount'];
+                    }
+                    $posPlaceholders = implode(',', array_fill(0, count($positionIds), '?'));
+                    $posParams = array_merge([$invoiceId], $positionIds);
+                    db()->prepare("UPDATE flex_positions SET invoice_id = ? WHERE id IN ($posPlaceholders)")->execute($posParams);
+                }
+
                 $creditsTotal = 0.0;
                 if ($openCredits !== []) {
                     $creditIds = [];
@@ -2365,17 +2590,18 @@ switch ($page) {
 
                 $vatEnabled = (bool)config('invoice.vat.enabled', false);
                 $vatPercent = (float)config('invoice.vat.rate_percent', 0);
-                $subtotalAfterCredits = round($total - $creditsTotal, 2);
+                $subtotalAfterCredits = round($total + $positionsTotal - $creditsTotal, 2);
                 $vatAmount = $vatEnabled ? round($subtotalAfterCredits * ($vatPercent / 100), 2) : 0.0;
                 $grossTotal = round($subtotalAfterCredits + $vatAmount, 2);
                 db()->prepare('UPDATE invoices
-                    SET flights_subtotal = ?, credits_total = ?, vat_amount = ?, total_amount = ?
-                    WHERE id = ?')->execute([round($total, 2), round($creditsTotal, 2), $vatAmount, $grossTotal, $invoiceId]);
+                    SET flights_subtotal = ?, positions_total = ?, credits_total = ?, vat_amount = ?, total_amount = ?
+                    WHERE id = ?')->execute([round($total, 2), round($positionsTotal, 2), round($creditsTotal, 2), $vatAmount, $grossTotal, $invoiceId]);
                 db()->commit();
 
                 audit_log('create', 'invoice', $invoiceId, [
                     'invoice_number' => $invoiceNumber,
                     'rows' => count($rows),
+                    'positions_total' => round($positionsTotal, 2),
                     'flights_subtotal' => round($total, 2),
                     'credits_total' => round($creditsTotal, 2),
                     'vat' => $vatAmount,
@@ -2440,6 +2666,52 @@ switch ($page) {
                 }
             }
 
+            if ($action === 'generate_all_open') {
+                $flightUsers = db()->query("SELECT DISTINCT rf.pilot_user_id AS user_id
+                    FROM reservation_flights rf
+                    JOIN reservations r ON r.id = rf.reservation_id
+                    WHERE r.status = 'completed'
+                      AND r.invoice_id IS NULL
+                      AND rf.is_billable = 1")->fetchAll();
+                $positionUsers = db()->query("SELECT DISTINCT user_id FROM flex_positions WHERE invoice_id IS NULL")->fetchAll();
+                $userIds = [];
+                foreach ($flightUsers as $row) {
+                    $userIds[(int)$row['user_id']] = true;
+                }
+                foreach ($positionUsers as $row) {
+                    $userIds[(int)$row['user_id']] = true;
+                }
+                $userIds = array_keys($userIds);
+                if ($userIds === []) {
+                    flash('error', 'Keine offenen Positionen gefunden.');
+                    header('Location: index.php?page=invoices');
+                    exit;
+                }
+
+                $createdCount = 0;
+                $mailCount = 0;
+                $errors = [];
+                foreach ($userIds as $userId) {
+                    $result = $createInvoiceForUser((int)$userId);
+                    if (!$result['ok']) {
+                        $errors[] = (string)$result['message'];
+                        continue;
+                    }
+                    $createdCount++;
+                    $mailResult = $sendInvoiceByMail((int)$result['invoice_id']);
+                    if (!empty($mailResult['ok']) && empty($mailResult['skipped'])) {
+                        $mailCount++;
+                    }
+                }
+
+                if ($createdCount > 0) {
+                    flash('success', 'Rechnungen erstellt: ' . $createdCount . '. E-Mails versendet: ' . $mailCount . '.');
+                }
+                if ($errors !== []) {
+                    flash('error', 'Fehler bei einzelnen Rechnungen: ' . implode(' | ', array_slice($errors, 0, 3)));
+                }
+            }
+
             if ($action === 'status') {
                 $invoiceId = (int)$_POST['invoice_id'];
                 $status = (string)$_POST['payment_status'];
@@ -2482,6 +2754,7 @@ switch ($page) {
                 try {
                     db()->prepare('UPDATE reservations SET invoice_id = NULL WHERE invoice_id = ?')->execute([$invoiceId]);
                     db()->prepare('UPDATE credits SET invoice_id = NULL WHERE invoice_id = ?')->execute([$invoiceId]);
+                    db()->prepare('UPDATE flex_positions SET invoice_id = NULL WHERE invoice_id = ?')->execute([$invoiceId]);
                     db()->prepare('DELETE FROM invoice_items WHERE invoice_id = ?')->execute([$invoiceId]);
                     db()->prepare('DELETE FROM invoices WHERE id = ?')->execute([$invoiceId]);
                     db()->commit();
@@ -2607,7 +2880,7 @@ switch ($page) {
         $invoiceStmt = db()->prepare($invoiceSql);
         $invoiceStmt->execute($invoiceParams);
         $invoices = $invoiceStmt->fetchAll();
-        $unbilledPilotHours = db()->query("SELECT
+        $openHoursRows = db()->query("SELECT
                 rf.pilot_user_id,
                 CONCAT(p.first_name, ' ', p.last_name) AS pilot_name,
                 ROUND(SUM(rf.hobbs_hours), 2) AS open_hours
@@ -2618,10 +2891,50 @@ switch ($page) {
               AND r.invoice_id IS NULL
               AND rf.is_billable = 1
             GROUP BY rf.pilot_user_id, p.first_name, p.last_name
-            ORDER BY open_hours DESC, p.last_name ASC, p.first_name ASC")->fetchAll();
+            ORDER BY p.last_name ASC, p.first_name ASC")->fetchAll();
+
+        $openPositionRows = db()->query("SELECT
+                p.user_id AS pilot_user_id,
+                CONCAT(u.first_name, ' ', u.last_name) AS pilot_name,
+                ROUND(SUM(p.amount), 2) AS open_positions
+            FROM flex_positions p
+            JOIN users u ON u.id = p.user_id
+            WHERE p.invoice_id IS NULL
+            GROUP BY p.user_id, u.first_name, u.last_name
+            ORDER BY u.last_name ASC, u.first_name ASC")->fetchAll();
+
+        $byPilot = [];
+        foreach ($openHoursRows as $row) {
+            $pilotId = (int)$row['pilot_user_id'];
+            $byPilot[$pilotId] = [
+                'pilot_user_id' => $pilotId,
+                'pilot_name' => (string)$row['pilot_name'],
+                'open_hours' => (float)$row['open_hours'],
+                'open_positions' => 0.0,
+            ];
+        }
+        foreach ($openPositionRows as $row) {
+            $pilotId = (int)$row['pilot_user_id'];
+            if (!isset($byPilot[$pilotId])) {
+                $byPilot[$pilotId] = [
+                    'pilot_user_id' => $pilotId,
+                    'pilot_name' => (string)$row['pilot_name'],
+                    'open_hours' => 0.0,
+                    'open_positions' => 0.0,
+                ];
+            }
+            $byPilot[$pilotId]['open_positions'] = (float)$row['open_positions'];
+        }
+        $unbilledPilotHours = array_values(array_filter($byPilot, static function (array $row): bool {
+            return ($row['open_hours'] ?? 0) > 0 || ($row['open_positions'] ?? 0) > 0;
+        }));
+        usort($unbilledPilotHours, static function (array $a, array $b): int {
+            return strcmp((string)$a['pilot_name'], (string)$b['pilot_name']);
+        });
 
         $openPilotId = (int)($_GET['open_pilot_id'] ?? 0);
         $openPilotFlights = [];
+        $openPilotPositions = [];
         $openPilotName = '';
         if ($openPilotId > 0) {
             $pilotFlightsStmt = db()->prepare("SELECT
@@ -2645,9 +2958,20 @@ switch ($page) {
             if (!empty($openPilotFlights)) {
                 $openPilotName = (string)$openPilotFlights[0]['pilot_name'];
             }
+            $pilotPositionsStmt = db()->prepare("SELECT position_date, amount, description
+                FROM flex_positions
+                WHERE invoice_id IS NULL AND user_id = ?
+                ORDER BY position_date ASC, id ASC");
+            $pilotPositionsStmt->execute([$openPilotId]);
+            $openPilotPositions = $pilotPositionsStmt->fetchAll();
+            if ($openPilotName === '' && !empty($openPilotPositions)) {
+                $nameStmt = db()->prepare('SELECT CONCAT(first_name, " ", last_name) FROM users WHERE id = ?');
+                $nameStmt->execute([$openPilotId]);
+                $openPilotName = (string)$nameStmt->fetchColumn();
+            }
         }
 
-        render('Abrechnung', 'invoices', compact('invoices', 'unbilledPilotHours', 'invoiceStatusFilter', 'invoiceSearch', 'openPilotId', 'openPilotFlights', 'openPilotName'));
+        render('Abrechnung', 'invoices', compact('invoices', 'unbilledPilotHours', 'invoiceStatusFilter', 'invoiceSearch', 'openPilotId', 'openPilotFlights', 'openPilotPositions', 'openPilotName'));
         break;
 
     case 'manual_flight':
@@ -2867,6 +3191,13 @@ switch ($page) {
         $creditsStmt->execute([$invoiceId]);
         $credits = $creditsStmt->fetchAll();
 
+        $positionsStmt = db()->prepare('SELECT id, position_date, amount, description, notes
+            FROM flex_positions
+            WHERE invoice_id = ?
+            ORDER BY position_date ASC, id ASC');
+        $positionsStmt->execute([$invoiceId]);
+        $positions = $positionsStmt->fetchAll();
+
         $countryOptions = european_countries();
         $issuer = [
             'name' => (string)config('invoice.issuer.name', ''),
@@ -2915,20 +3246,24 @@ switch ($page) {
         $flightsSubtotal = array_reduce($items, static function (float $carry, array $item): float {
             return $carry + (float)$item['line_total'];
         }, 0.0);
+        $positionsTotal = array_reduce($positions, static function (float $carry, array $pos): float {
+            return $carry + (float)$pos['amount'];
+        }, 0.0);
         $creditsTotal = array_reduce($credits, static function (float $carry, array $credit): float {
             return $carry + (float)$credit['amount'];
         }, 0.0);
         $summary = [
             'flights_subtotal' => round((float)($invoice['flights_subtotal'] ?? $flightsSubtotal), 2),
+            'positions_total' => round((float)($invoice['positions_total'] ?? $positionsTotal), 2),
             'credits_total' => round((float)($invoice['credits_total'] ?? $creditsTotal), 2),
             'vat_amount' => round((float)($invoice['vat_amount'] ?? 0), 2),
             'total_amount' => round((float)$invoice['total_amount'], 2),
         ];
         if ($summary['vat_amount'] === 0.0 && !empty($vat['enabled'])) {
-            $summary['vat_amount'] = round(($summary['flights_subtotal'] - $summary['credits_total']) * ((float)$vat['rate_percent'] / 100), 2);
+            $summary['vat_amount'] = round(($summary['flights_subtotal'] + $summary['positions_total'] - $summary['credits_total']) * ((float)$vat['rate_percent'] / 100), 2);
         }
         if ($summary['total_amount'] === 0.0) {
-            $summary['total_amount'] = round($summary['flights_subtotal'] - $summary['credits_total'] + $summary['vat_amount'], 2);
+            $summary['total_amount'] = round($summary['flights_subtotal'] + $summary['positions_total'] - $summary['credits_total'] + $summary['vat_amount'], 2);
         }
 
         $renderMode = $page === 'invoice_pdf' ? 'pdf' : 'html';
@@ -2953,7 +3288,7 @@ switch ($page) {
             $logoSrc = $logoPublicPath;
         }
 
-        $viewData = compact('invoice', 'items', 'credits', 'summary', 'issuer', 'bank', 'vat', 'invoiceMeta', 'logoSrc', 'customerAddress', 'renderMode');
+        $viewData = compact('invoice', 'items', 'credits', 'positions', 'summary', 'issuer', 'bank', 'vat', 'invoiceMeta', 'logoSrc', 'customerAddress', 'renderMode');
         extract($viewData, EXTR_SKIP);
         ob_start();
         include __DIR__ . '/app/views/invoice_pdf.php';
