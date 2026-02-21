@@ -3,7 +3,21 @@ CREATE TABLE roles (
   name VARCHAR(50) NOT NULL UNIQUE
 );
 
-INSERT INTO roles (name) VALUES ('admin'), ('pilot'), ('accounting'), ('board'), ('member');
+CREATE TABLE permissions (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  name VARCHAR(100) NOT NULL UNIQUE,
+  label VARCHAR(150) NULL
+);
+
+CREATE TABLE role_permissions (
+  role_id INT NOT NULL,
+  permission_id INT NOT NULL,
+  PRIMARY KEY (role_id, permission_id),
+  FOREIGN KEY (role_id) REFERENCES roles(id) ON DELETE CASCADE,
+  FOREIGN KEY (permission_id) REFERENCES permissions(id) ON DELETE CASCADE
+);
+
+INSERT INTO roles (name) VALUES ('admin'), ('pilot'), ('accounting'), ('board'), ('member'), ('member_passive');
 
 CREATE TABLE users (
   id INT AUTO_INCREMENT PRIMARY KEY,

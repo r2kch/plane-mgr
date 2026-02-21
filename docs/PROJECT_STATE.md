@@ -3,7 +3,8 @@
 ## Kurzüberblick
 - Klassische PHP/MySQL App im `public/` Ordner (Front Controller: `public/index.php`)
 - DB Schema in `sql/schema.sql`, Auto‑Migrations in `public/app/bootstrap.php`
-- Rollen: `admin`, `pilot`, `accounting`, `board`, `member`
+- Rollen: `admin`, `pilot`, `accounting`, `board`, `member`, `member_passive`
+- Berechtigungen: DB‑basiert (`permissions`, `role_permissions`), Admin hat immer alles
 - Modules: `reservations`, `billing`, `audit` (in `public/Config.php`)
 
 ## Zentrale Features
@@ -58,4 +59,3 @@ Variablen: `variables.md`
 ## Offene Themen / ToDos (laufend)
 - UI‑Feinschliff an einzelnen Tabellen/Layouts
 - Neue Features jeweils in `README.md` ergänzen
-

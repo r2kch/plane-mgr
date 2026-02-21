@@ -60,7 +60,6 @@ return [
         'audit' => true,
     ],
     'news' => [
-        'author_roles' => ['admin'],
         'allowed_tags' => ['b', 'strong', 'i', 'em', 'u', 'span', 'p', 'br', 'ul', 'ol', 'li', 'div'],
     ],
 ];

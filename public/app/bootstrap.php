@@ -164,11 +164,55 @@ function db(): PDO
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
         CONSTRAINT fk_news_created_by FOREIGN KEY (created_by) REFERENCES users(id)
     )");
+    $pdo->exec("CREATE TABLE IF NOT EXISTS permissions (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        name VARCHAR(100) NOT NULL UNIQUE,
+        label VARCHAR(150) NULL
+    )");
+    $pdo->exec("CREATE TABLE IF NOT EXISTS role_permissions (
+        role_id INT NOT NULL,
+        permission_id INT NOT NULL,
+        PRIMARY KEY (role_id, permission_id),
+        CONSTRAINT fk_role_permissions_role FOREIGN KEY (role_id) REFERENCES roles(id) ON DELETE CASCADE,
+        CONSTRAINT fk_role_permissions_permission FOREIGN KEY (permission_id) REFERENCES permissions(id) ON DELETE CASCADE
+    )");
 
-    $roleSeed = ['admin', 'pilot', 'accounting', 'board', 'member'];
+    $roleSeed = ['admin', 'pilot', 'accounting', 'board', 'member', 'member_passive'];
     $roleStmt = $pdo->prepare('INSERT IGNORE INTO roles (name) VALUES (?)');
     foreach ($roleSeed as $roleName) {
         $roleStmt->execute([$roleName]);
+    }
+
+    $permissionSeed = [
+        ['name' => 'reservation.create', 'label' => 'Reservierung erstellen'],
+        ['name' => 'reservation.complete.own', 'label' => 'Reservierung als durchgeführt markieren (eigene)'],
+        ['name' => 'calendar.view', 'label' => 'Kalender sehen'],
+        ['name' => 'invoice.create', 'label' => 'Rechnung erzeugen (offene Stunden)'],
+        ['name' => 'invoice.send', 'label' => 'Rechnung per E-Mail versenden (SMTP)'],
+        ['name' => 'invoice.status.update', 'label' => 'Zahlungsstatus ändern (offen/bezahlt/überfällig)'],
+        ['name' => 'news.manage', 'label' => 'News erstellen/bearbeiten/löschen'],
+    ];
+    $permissionStmt = $pdo->prepare('INSERT IGNORE INTO permissions (name, label) VALUES (?, ?)');
+    foreach ($permissionSeed as $permission) {
+        $permissionStmt->execute([$permission['name'], $permission['label']]);
+    }
+
+    $rolePermissionCount = (int)$pdo->query('SELECT COUNT(*) FROM role_permissions')->fetchColumn();
+    if ($rolePermissionCount === 0) {
+        $rolePermissionSeed = [
+            'pilot' => ['reservation.create', 'reservation.complete.own', 'calendar.view'],
+            'accounting' => ['calendar.view', 'invoice.create', 'invoice.send', 'invoice.status.update'],
+            'board' => [],
+            'member' => [],
+            'member_passive' => [],
+        ];
+        $rolePermissionStmt = $pdo->prepare("INSERT IGNORE INTO role_permissions (role_id, permission_id)
+            SELECT r.id, p.id FROM roles r, permissions p WHERE r.name = ? AND p.name = ?");
+        foreach ($rolePermissionSeed as $roleName => $permissions) {
+            foreach ($permissions as $permissionName) {
+                $rolePermissionStmt->execute([$roleName, $permissionName]);
+            }
+        }
     }
 
     $fkStmt = $pdo->query("SELECT COUNT(*) FROM information_schema.TABLE_CONSTRAINTS
@@ -185,16 +229,7 @@ function db(): PDO
 
 function can_manage_news(): bool
 {
-    $allowedRoles = config('news.author_roles', ['admin']);
-    if (!is_array($allowedRoles)) {
-        $allowedRoles = ['admin'];
-    }
-    foreach ($allowedRoles as $roleName) {
-        if (has_role((string)$roleName)) {
-            return true;
-        }
-    }
-    return false;
+    return can('news.manage');
 }
 
 function sanitize_news_html(string $html): string
@@ -586,13 +621,21 @@ function user_rate_for_aircraft(int $userId, int $aircraftId): ?float
 
 function role_permissions(): array
 {
-    return [
-        'admin' => ['all'],
-        'pilot' => ['reservation.create', 'reservation.complete.own', 'calendar.view'],
-        'accounting' => ['calendar.view', 'invoice.create', 'invoice.send', 'invoice.status.update'],
-        'board' => [],
-        'member' => [],
-    ];
+    $rows = db()->query("SELECT r.name AS role_name, p.name AS permission_name
+        FROM role_permissions rp
+        JOIN roles r ON r.id = rp.role_id
+        JOIN permissions p ON p.id = rp.permission_id
+        ORDER BY r.name ASC, p.name ASC")->fetchAll();
+
+    $map = [];
+    foreach ($rows as $row) {
+        $roleName = (string)$row['role_name'];
+        $permissionName = (string)$row['permission_name'];
+        $map[$roleName] ??= [];
+        $map[$roleName][] = $permissionName;
+    }
+
+    return $map;
 }
 
 function can(string $permission): bool
@@ -602,13 +645,44 @@ function can(string $permission): bool
         return false;
     }
 
-    $allPermissions = [];
-    foreach (($user['roles'] ?? []) as $role) {
-        $allPermissions = array_merge($allPermissions, role_permissions()[$role] ?? []);
+    if (has_role('admin')) {
+        return true;
     }
-    $allPermissions = array_values(array_unique($allPermissions));
 
-    return in_array('all', $allPermissions, true) || in_array($permission, $allPermissions, true);
+    $allPermissions = permissions_for_user((int)$user['id']);
+    return in_array($permission, $allPermissions, true);
+}
+
+function permissions_for_user(int $userId): array
+{
+    static $cache = [];
+    if (isset($cache[$userId])) {
+        return $cache[$userId];
+    }
+
+    $stmt = db()->prepare("SELECT DISTINCT p.name
+        FROM permissions p
+        JOIN role_permissions rp ON rp.permission_id = p.id
+        JOIN user_roles ur ON ur.role_id = rp.role_id
+        WHERE ur.user_id = ?
+        ORDER BY p.name ASC");
+    $stmt->execute([$userId]);
+    $cache[$userId] = $stmt->fetchAll(PDO::FETCH_COLUMN);
+
+    return $cache[$userId];
+}
+
+function role_label(string $roleName): string
+{
+    return match ($roleName) {
+        'admin' => 'Admin',
+        'pilot' => 'Pilot',
+        'accounting' => 'Buchhaltung',
+        'board' => 'Vorstand',
+        'member' => 'Mitglied',
+        'member_passive' => 'Mitglied passiv',
+        default => ucwords(str_replace('_', ' ', $roleName)),
+    };
 }
 
 function module_enabled(string $module): bool

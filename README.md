@@ -3,7 +3,7 @@
 Klassische PHP/MySQL-Reservations- und Abrechnungssoftware für eine Flugsportgruppe
 
 ## Enthaltene Funktionen
-- Login mit Mehrfachrollen: `admin`, `pilot`, `accounting`, `board`, `member`
+- Login mit Mehrfachrollen: `admin`, `pilot`, `accounting`, `board`, `member`, `member_passive`
 - Benutzerverwaltung (Admin): Benutzer anlegen, mehrere Rollen vergeben, aktiv/deaktiviert, Passwort setzen
 - Reservierungen pro Flugzeug (anlegen, bearbeiten, löschen) inkl. Durchführung
 - Reservierungen nur für Rollen `pilot` und `admin`
@@ -20,7 +20,7 @@ Klassische PHP/MySQL-Reservations- und Abrechnungssoftware für eine Flugsportgr
   - Erfassung per Rolle oder Personen-Auswahl
   - unverrechnete Positionen sind editier-/löschbar
   - eigene Tabelle auf der Rechnung
-- News (HTML-Beiträge) mit Rollensteuerung über `Config.php`
+- News (HTML-Beiträge) mit Berechtigung `news.manage` (Admin-UI)
 - Rechnungserzeugung aus offenen Stunden/Positionen (pro Pilot)
 - Sammelaktion: alle offenen Rechnungen erstellen und per Mail versenden
 - Rechnungsstorno setzt verknüpfte Reservierungen und Gutschriften wieder auf unverrechnet zurück
@@ -34,6 +34,7 @@ Klassische PHP/MySQL-Reservations- und Abrechnungssoftware für eine Flugsportgr
   - jeweils mit PDF-Anhang
 - Audit-Log (nur Admin)
 - Rollen-/Rechtematrix Vorlage: `docs/rollen_rechte_vorlage.csv`
+- Rollen & Berechtigungen (DB-basiert) via Admin-UI `index.php?page=permissions` (Menü: Rollen)
 
 
 ## Setup
@@ -63,13 +64,7 @@ In `public/Config.php` können Module für alle Benutzer global aktiviert/deakti
 ],
 ```
 
-- News-Rollensteuerung in `public/Config.php`:
-```php
-'news' => [
-    'author_roles' => ['admin', 'board'],
-    'allowed_tags' => ['b','strong','i','em','u','span','p','br','ul','ol','li','div'],
-],
-```
+- News: `allowed_tags` in `public/Config.php` steuert die erlaubten HTML-Tags.
 
 - `reservations = false`:
   - Menü `Reservierungen` ausgeblendet
@@ -87,6 +82,7 @@ In `public/Config.php` können Module für alle Benutzer global aktiviert/deakti
   - Seite `index.php?page=audit` gesperrt
 
 ## Hinweise für Entwicklung:
+- `calendar.view` steuert die Sichtbarkeit von Kalender und zukünftigen Reservierungen im Dashboard.
 - `public/cleanup.php` (nur Admin) löscht Rechnungen/Rechnungspositionen und setzt Reservierungen auf "nicht verrechnet" zurück (`invoice_id = NULL`).
 - `public/debug.php` enthält einen SMTP-Test (Testmail an frei wählbare Adresse).
 

@@ -15,6 +15,11 @@
     <p>Benutzer und Rollen pflegen.</p>
     <a class="btn-small" href="index.php?page=users">Öffnen</a>
   </article>
+  <article class="card">
+    <h3>Rollen</h3>
+    <p>Rollenrechte verwalten (Admin hat immer alles).</p>
+    <a class="btn-small" href="index.php?page=permissions">Öffnen</a>
+  </article>
   <?php if (module_enabled('audit')): ?>
     <article class="card">
       <h3>Audit-Log</h3>

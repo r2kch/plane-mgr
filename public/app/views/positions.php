@@ -3,15 +3,6 @@
 <h3>Position erfassen</h3>
 <form method="post" class="grid-form">
   <input type="hidden" name="_csrf" value="<?= h(csrf_token()) ?>">
-  <?php
-  $roleLabels = [
-    'pilot' => 'Pilot',
-    'accounting' => 'Buchhaltung',
-    'admin' => 'Admin',
-    'board' => 'Vorstand',
-    'member' => 'Mitglied',
-  ];
-  ?>
   <?php if (!empty($editPosition)): ?>
     <input type="hidden" name="action" value="update_position">
     <input type="hidden" name="position_id" value="<?= (int)$editPosition['id'] ?>">
@@ -61,7 +52,7 @@
         <?php foreach ($rolesList as $role): ?>
           <label class="checkline">
             <input type="checkbox" name="role_names[]" value="<?= h($role['name']) ?>">
-            <?= h($roleLabels[$role['name']] ?? $role['name']) ?>
+            <?= h(role_label((string)$role['name'])) ?>
           </label>
         <?php endforeach; ?>
       </div>

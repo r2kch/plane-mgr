@@ -107,7 +107,8 @@ switch ($page) {
         $allowedAircraftIds = $groupRestrictedPilot ? permitted_aircraft_ids_for_user((int)current_user()['id']) : [];
         $latestNews = null;
 
-        if ($showReservationsModule) {
+        $canViewCalendar = $showReservationsModule && can('calendar.view');
+        if ($canViewCalendar) {
             $calendarStartInput = (string)($_GET['calendar_start'] ?? date('Y-m-d'));
             $calendarStartTs = strtotime($calendarStartInput . ' 00:00:00');
             if ($calendarStartTs === false) {
@@ -178,6 +179,7 @@ switch ($page) {
             'calendarDaysCount',
             'calendarAircraft',
             'calendarReservationsByAircraft',
+            'canViewCalendar',
             'latestNews'
         ));
         break;
@@ -268,6 +270,129 @@ switch ($page) {
     case 'admin':
         require_role('admin');
         render('Admin', 'admin');
+        break;
+
+    case 'permissions':
+        require_role('admin');
+
+        $roles = db()->query('SELECT id, name FROM roles ORDER BY name ASC')->fetchAll();
+        $permissions = db()->query('SELECT id, name, label FROM permissions ORDER BY label ASC, name ASC')->fetchAll();
+        $openRoleId = (int)($_GET['open_role_id'] ?? 0);
+        $roleNamesById = [];
+        foreach ($roles as $role) {
+            $roleNamesById[(int)$role['id']] = (string)$role['name'];
+        }
+
+        if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+            if (!csrf_check($_POST['_csrf'] ?? null)) {
+                flash('error', 'Ungültiger Request.');
+                header('Location: index.php?page=permissions');
+                exit;
+            }
+
+            $action = (string)($_POST['action'] ?? '');
+
+            if ($action === 'create_role') {
+                $roleName = strtolower(trim((string)($_POST['role_name'] ?? '')));
+                if ($roleName === '' || !preg_match('/^[a-z][a-z0-9_]{2,49}$/', $roleName)) {
+                    flash('error', 'Rollenname ungültig (a-z, 0-9, _, min. 3 Zeichen).');
+                    header('Location: index.php?page=permissions');
+                    exit;
+                }
+                if (in_array($roleName, ['admin', 'accounting'], true)) {
+                    flash('error', 'Diese Rolle darf nicht manuell angelegt werden.');
+                    header('Location: index.php?page=permissions');
+                    exit;
+                }
+                try {
+                    $stmt = db()->prepare('INSERT INTO roles (name) VALUES (?)');
+                    $stmt->execute([$roleName]);
+                    audit_log('create', 'role', (int)db()->lastInsertId(), ['role' => $roleName]);
+                    flash('success', 'Rolle erstellt.');
+                } catch (Throwable $e) {
+                    flash('error', 'Rolle konnte nicht erstellt werden (evtl. bereits vorhanden).');
+                }
+
+                header('Location: index.php?page=permissions');
+                exit;
+            }
+
+            if ($action === 'delete_role') {
+                $roleId = (int)($_POST['role_id'] ?? 0);
+                if ($roleId <= 0 || !isset($roleNamesById[$roleId])) {
+                    flash('error', 'Ungültige Rolle.');
+                    header('Location: index.php?page=permissions');
+                    exit;
+                }
+                $roleName = $roleNamesById[$roleId];
+                if (in_array($roleName, ['admin', 'accounting'], true)) {
+                    flash('error', 'Admin und Buchhaltung sind nicht löschbar.');
+                    header('Location: index.php?page=permissions');
+                    exit;
+                }
+                try {
+                    db()->prepare('DELETE FROM roles WHERE id = ?')->execute([$roleId]);
+                    audit_log('delete', 'role', $roleId, ['role' => $roleName]);
+                    flash('success', 'Rolle gelöscht.');
+                } catch (Throwable $e) {
+                    flash('error', 'Rolle konnte nicht gelöscht werden.');
+                }
+
+                header('Location: index.php?page=permissions');
+                exit;
+            }
+
+            $roleId = (int)($_POST['role_id'] ?? 0);
+            if ($roleId <= 0 || !isset($roleNamesById[$roleId])) {
+                flash('error', 'Ungültige Rolle.');
+                header('Location: index.php?page=permissions');
+                exit;
+            }
+
+            $roleName = $roleNamesById[$roleId];
+            if ($roleName === 'admin') {
+                flash('error', 'Admin hat immer alle Rechte und kann hier nicht geändert werden.');
+                header('Location: index.php?page=permissions');
+                exit;
+            }
+
+            $permissionIds = array_values(array_unique(array_map(static fn($id): int => (int)$id, (array)($_POST['permission_ids'] ?? []))));
+            $validPermissionIds = array_map(static fn(array $row): int => (int)$row['id'], $permissions);
+            $permissionIds = array_values(array_intersect($validPermissionIds, $permissionIds));
+
+            try {
+                db()->beginTransaction();
+                db()->prepare('DELETE FROM role_permissions WHERE role_id = ?')->execute([$roleId]);
+                if ($permissionIds !== []) {
+                    $insert = db()->prepare('INSERT INTO role_permissions (role_id, permission_id) VALUES (?, ?)');
+                    foreach ($permissionIds as $permissionId) {
+                        $insert->execute([$roleId, $permissionId]);
+                    }
+                }
+                db()->commit();
+                audit_log('update', 'role_permissions', $roleId, ['role' => $roleName, 'permission_ids' => $permissionIds]);
+                flash('success', 'Berechtigungen gespeichert.');
+            } catch (Throwable $e) {
+                if (db()->inTransaction()) {
+                    db()->rollBack();
+                }
+                flash('error', 'Berechtigungen konnten nicht gespeichert werden.');
+            }
+
+            header('Location: index.php?page=permissions');
+            exit;
+        }
+
+        $rolePermissionsByRoleId = [];
+        $rolePermissionRows = db()->query('SELECT role_id, permission_id FROM role_permissions')->fetchAll();
+        foreach ($rolePermissionRows as $row) {
+            $roleId = (int)$row['role_id'];
+            $permissionId = (int)$row['permission_id'];
+            $rolePermissionsByRoleId[$roleId] ??= [];
+            $rolePermissionsByRoleId[$roleId][$permissionId] = true;
+        }
+
+        render('Berechtigungen', 'permissions', compact('roles', 'permissions', 'rolePermissionsByRoleId', 'openRoleId'));
         break;
 
     case 'accounting':
@@ -1015,6 +1140,7 @@ switch ($page) {
         $usersPageUrl = 'index.php?page=users' . ($userSearch !== '' ? '&q=' . urlencode($userSearch) : '');
         $allGroups = db()->query('SELECT id, name FROM aircraft_groups ORDER BY name')->fetchAll();
         $validGroupIds = array_map(static fn(array $row): int => (int)$row['id'], $allGroups);
+        $rolesList = db()->query('SELECT name FROM roles ORDER BY name ASC')->fetchAll(PDO::FETCH_COLUMN);
 
         if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (!csrf_check($_POST['_csrf'] ?? null)) {
@@ -1040,7 +1166,7 @@ switch ($page) {
                 $groupIds = array_values(array_intersect($validGroupIds, $groupIds));
                 $password = (string)($_POST['password'] ?? '');
 
-                $validRoles = ['admin', 'pilot', 'accounting', 'board', 'member'];
+                $validRoles = array_map('strval', $rolesList);
                 $roles = array_values(array_intersect($validRoles, $roles));
 
                 if ($firstName === '' || $lastName === '' || $email === '' || count($roles) === 0 || strlen($password) < 8) {
@@ -1097,7 +1223,7 @@ switch ($page) {
                 $groupIds = array_values(array_intersect($validGroupIds, $groupIds));
                 $isActive = ((string)($_POST['is_active'] ?? '1')) === '1' ? 1 : 0;
                 $newPassword = (string)($_POST['new_password'] ?? '');
-                $validRoles = ['admin', 'pilot', 'accounting', 'board', 'member'];
+                $validRoles = array_map('strval', $rolesList);
                 $roles = array_values(array_intersect($validRoles, $roles));
 
                 if ($userId <= 0 || $firstName === '' || $lastName === '' || $email === '' || count($roles) === 0) {
@@ -1266,7 +1392,7 @@ switch ($page) {
             $userGroupIdsByUser[$uid][] = $gid;
         }
 
-        render('Benutzer', 'users', compact('users', 'userSearch', 'openUserId', 'showNewUserForm', 'allGroups', 'userGroupIdsByUser', 'countryOptions'));
+        render('Benutzer', 'users', compact('users', 'userSearch', 'openUserId', 'showNewUserForm', 'allGroups', 'userGroupIdsByUser', 'countryOptions', 'rolesList'));
         break;
 
     case 'rates':

@@ -46,6 +46,7 @@ function render(string $title, string $view, array $data = []): void
               <a href="index.php?page=aircraft">Flugzeuge</a>
               <a href="index.php?page=groups">Flugzeug-Gruppen</a>
               <a href="index.php?page=users">Benutzer</a>
+              <a href="index.php?page=permissions">Rollen</a>
               <?php if (module_enabled('audit')): ?><a href="index.php?page=audit">Audit-Log</a><?php endif; ?>
             </div>
           </div>
