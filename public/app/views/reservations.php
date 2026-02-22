@@ -12,9 +12,15 @@
     $selectedUserId = $isEdit ? (int)$editReservation['user_id'] : (int)current_user()['id'];
     $showPilotSelect = has_role('admin') || !has_role('pilot');
     $prefillStart = isset($prefillStartDate) ? (string)$prefillStartDate : '';
+    $prefillStartTime = isset($prefillStartTime) ? (string)$prefillStartTime : '';
     $baseStartDate = $prefillStart !== '' ? $prefillStart : $today;
-    $startTsForm = $isEdit ? strtotime((string)$editReservation['starts_at']) : strtotime($baseStartDate . ' 08:00:00');
+    $baseStartTime = $prefillStartTime !== '' ? $prefillStartTime : '08:00';
+    $startTsForm = $isEdit ? strtotime((string)$editReservation['starts_at']) : strtotime($baseStartDate . ' ' . $baseStartTime);
+    $prefillDurationMinutes = isset($prefillDurationMinutes) ? (int)$prefillDurationMinutes : 0;
     $endTsForm = $isEdit ? strtotime((string)$editReservation['ends_at']) : strtotime($baseStartDate . ' 17:00:00');
+    if (!$isEdit && $prefillDurationMinutes > 0 && $startTsForm !== false) {
+      $endTsForm = $startTsForm + ($prefillDurationMinutes * 60);
+    }
     $noteValue = $isEdit ? (string)$editReservation['notes'] : '';
     $hasAvailableAircraft = !empty($aircraft);
   ?>
@@ -263,7 +269,7 @@
               <form method="post" class="inline-form" onsubmit="return confirm('Reservierung wirklich löschen?');">
                 <input type="hidden" name="_csrf" value="<?= h(csrf_token()) ?>">
                 <input type="hidden" name="reservation_id" value="<?= (int)$r['id'] ?>">
-                <?php if (($isMine || has_role('admin')) && $isFuture): ?>
+                <?php if ($isMine || has_role('admin')): ?>
                   <a class="btn-small" href="index.php?page=reservations&month=<?= h($month) ?>&edit_id=<?= (int)$r['id'] ?>">Bearbeiten</a>
                 <?php endif; ?>
                 <?php if ($canComplete): ?>

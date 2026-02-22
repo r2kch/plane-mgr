@@ -100,7 +100,9 @@ switch ($page) {
         $calendarEndDate = date('Y-m-d');
         $userAgent = (string)($_SERVER['HTTP_USER_AGENT'] ?? '');
         $isMobileDevice = (bool)preg_match('/Android|iPhone|iPad|iPod|Mobile/i', $userAgent);
-        $calendarDaysCount = $isMobileDevice ? 1 : 7;
+        $requestedView = (string)($_GET['view'] ?? '');
+        $isDayView = !$isMobileDevice && $requestedView !== 'week';
+        $calendarDaysCount = $isDayView ? 1 : ($isMobileDevice ? 1 : 7);
         $calendarAircraft = [];
         $calendarReservationsByAircraft = [];
         $groupRestrictedPilot = is_group_restricted_pilot();
@@ -108,6 +110,8 @@ switch ($page) {
         $latestNews = null;
 
         $canViewCalendar = $showReservationsModule && can('calendar.view');
+        $sunriseStartOffsetMinutes = null;
+        $sunsetEndOffsetMinutes = null;
         if ($canViewCalendar) {
             $calendarStartInput = (string)($_GET['calendar_start'] ?? date('Y-m-d'));
             $calendarStartTs = strtotime($calendarStartInput . ' 00:00:00');
@@ -159,6 +163,26 @@ switch ($page) {
                 $aircraftId = (int)$row['aircraft_id'];
                 $calendarReservationsByAircraft[$aircraftId][] = $row;
             }
+
+            if ($isDayView) {
+                $lat = (float)config('location.lat', 0);
+                $lon = (float)config('location.lon', 0);
+                if ($lat !== 0.0 || $lon !== 0.0) {
+                    $timezone = (string)config('app.timezone', 'UTC');
+                    $tz = new DateTimeZone($timezone);
+                    $dateMidnight = new DateTimeImmutable($calendarStartDate . ' 00:00:00', $tz);
+                    $dateForSun = new DateTimeImmutable($calendarStartDate . ' 12:00:00', $tz);
+                    $sunInfo = date_sun_info($dateForSun->getTimestamp(), $lat, $lon);
+                    if (is_array($sunInfo) && !empty($sunInfo['sunrise']) && !empty($sunInfo['sunset'])) {
+                        $sunriseLocal = (new DateTimeImmutable('@' . (int)$sunInfo['sunrise']))->setTimezone($tz);
+                        $sunsetLocal = (new DateTimeImmutable('@' . (int)$sunInfo['sunset']))->setTimezone($tz);
+                        $sunriseOffsetTs = $sunriseLocal->getTimestamp() - (30 * 60);
+                        $sunsetOffsetTs = $sunsetLocal->getTimestamp() + (30 * 60);
+                        $sunriseStartOffsetMinutes = max(0, (int)floor(($sunriseOffsetTs - $dateMidnight->getTimestamp()) / 60));
+                        $sunsetEndOffsetMinutes = max(0, min(24 * 60, (int)ceil(($sunsetOffsetTs - $dateMidnight->getTimestamp()) / 60)));
+                    }
+                }
+            }
         }
 
         $newsStmt = db()->query("SELECT n.id, n.title, n.body_html, n.created_at,
@@ -180,6 +204,10 @@ switch ($page) {
             'calendarAircraft',
             'calendarReservationsByAircraft',
             'canViewCalendar',
+            'isDayView',
+            'isMobileDevice',
+            'sunriseStartOffsetMinutes',
+            'sunsetEndOffsetMinutes',
             'latestNews'
         ));
         break;
@@ -1477,6 +1505,14 @@ switch ($page) {
         if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $prefillStartDate)) {
             $prefillStartDate = '';
         }
+        $prefillStartTime = trim((string)($_GET['prefill_start_time'] ?? ''));
+        if (!preg_match('/^\d{2}:\d{2}$/', $prefillStartTime)) {
+            $prefillStartTime = '';
+        }
+        $prefillDurationMinutes = (int)($_GET['prefill_duration'] ?? 0);
+        if ($prefillDurationMinutes <= 0 || $prefillDurationMinutes > 720) {
+            $prefillDurationMinutes = 0;
+        }
         $canCompleteReservation = static function (int $ownerId): bool {
             return has_role('admin') || (can('reservation.complete.own') && $ownerId === (int)current_user()['id']);
         };
@@ -1966,7 +2002,14 @@ switch ($page) {
 
                     $newEndsAt = (string)$reservation['ends_at'];
                     $shouldShorten = $endsAtTs !== false && $lastLandingTs !== false && $lastLandingTs <= $endsAtTs;
-                    if ($shouldShorten) {
+                    if ($savedFlightCount === 0) {
+                        $applyTs = $nowTs;
+                        if ($endsAtTs !== false) {
+                            $applyTs = min($nowTs, $endsAtTs);
+                        }
+                        $newEndsAt = date('Y-m-d H:i:s', $applyTs);
+                        $shouldShorten = true;
+                    } elseif ($shouldShorten) {
                         $newEndsAt = date('Y-m-d H:i:s', $lastLandingTs);
                     }
 
@@ -1980,7 +2023,7 @@ switch ($page) {
                             'mode' => 'without_additional_flight',
                             'ends_at' => $newEndsAt,
                         ]);
-                        flash('success', 'Kein Flug eingetragen. Reservierung abgeschlossen' . ($shouldShorten ? ' (Endzeit auf letzten Flug gesetzt).' : '.'));
+                        flash('success', 'Kein Flug eingetragen. Reservierung abgeschlossen' . ($shouldShorten ? ' (Endzeit auf jetzt gesetzt).' : '.'));
                     } else {
                         audit_log('complete', 'reservation', $reservationId, [
                             'flights' => $savedFlightCount,
@@ -2291,6 +2334,91 @@ switch ($page) {
             }
         }
 
+        $showReservationsModule = module_enabled('reservations');
+        $canViewCalendar = $showReservationsModule && can('calendar.view');
+        $calendarStartDate = date('Y-m-d');
+        $calendarEndDate = $calendarStartDate;
+        $calendarDaysCount = 1;
+        $calendarAircraft = [];
+        $calendarReservationsByAircraft = [];
+        $userAgent = (string)($_SERVER['HTTP_USER_AGENT'] ?? '');
+        $isMobileDevice = (bool)preg_match('/Android|iPhone|iPad|iPod|Mobile/i', $userAgent);
+        $requestedView = (string)($_GET['view'] ?? '');
+        $isDayView = $requestedView !== 'week';
+        $sunriseStartOffsetMinutes = null;
+        $sunsetEndOffsetMinutes = null;
+
+        if ($canViewCalendar) {
+            if ($isMobileDevice) {
+                $isDayView = true;
+            }
+            $calendarDaysCount = $isDayView ? 1 : 7;
+            $calendarStartInput = (string)($_GET['calendar_start'] ?? '');
+            if ($calendarStartInput === '' && $prefillStartDate !== '') {
+                $calendarStartInput = $prefillStartDate;
+            }
+            if ($calendarStartInput === '') {
+                $calendarStartInput = date('Y-m-d');
+            }
+            $calendarStartTs = strtotime($calendarStartInput . ' 00:00:00');
+            if ($calendarStartTs === false) {
+                $calendarStartTs = strtotime(date('Y-m-d') . ' 00:00:00');
+            }
+            $calendarStartDate = date('Y-m-d', $calendarStartTs);
+            $calendarEndDate = date('Y-m-d', strtotime($calendarStartDate . ' +' . ($calendarDaysCount - 1) . ' days'));
+            $calendarStartBound = $calendarStartDate . ' 00:00:00';
+            $calendarEndBound = $calendarEndDate . ' 23:59:59';
+
+            $calendarAircraft = db()->query("SELECT id, immatriculation, type
+                FROM aircraft
+                WHERE status = 'active'
+                ORDER BY immatriculation ASC")->fetchAll();
+            $groupRestrictedPilot = is_group_restricted_pilot();
+            $allowedAircraftIds = $groupRestrictedPilot ? permitted_aircraft_ids_for_user((int)current_user()['id']) : [];
+            $canReserve = has_role('admin') || can('reservation.create');
+            foreach ($calendarAircraft as &$aircraftRow) {
+                $aircraftRow['can_link'] = $canReserve && (!$groupRestrictedPilot || in_array((int)$aircraftRow['id'], $allowedAircraftIds, true));
+            }
+            unset($aircraftRow);
+
+            $calendarSql = "SELECT r.id, r.aircraft_id, r.user_id, r.starts_at, r.ends_at, r.notes,
+                    CONCAT(u.first_name, ' ', u.last_name) AS pilot_name
+                FROM reservations r
+                JOIN users u ON u.id = r.user_id
+                WHERE r.status IN ('booked', 'completed')
+                  AND r.starts_at <= ?
+                  AND r.ends_at >= ?
+                ORDER BY r.starts_at ASC";
+            $calendarStmt = db()->prepare($calendarSql);
+            $calendarStmt->execute([$calendarEndBound, $calendarStartBound]);
+            $calendarReservationsRaw = $calendarStmt->fetchAll();
+
+            foreach ($calendarReservationsRaw as $row) {
+                $aircraftId = (int)$row['aircraft_id'];
+                $calendarReservationsByAircraft[$aircraftId][] = $row;
+            }
+
+            if ($isDayView) {
+                $lat = (float)config('location.lat', 0);
+                $lon = (float)config('location.lon', 0);
+                if ($lat !== 0.0 || $lon !== 0.0) {
+                    $timezone = (string)config('app.timezone', 'UTC');
+                    $tz = new DateTimeZone($timezone);
+                    $dateMidnight = new DateTimeImmutable($calendarStartDate . ' 00:00:00', $tz);
+                    $dateForSun = new DateTimeImmutable($calendarStartDate . ' 12:00:00', $tz);
+                    $sunInfo = date_sun_info($dateForSun->getTimestamp(), $lat, $lon);
+                    if (is_array($sunInfo) && !empty($sunInfo['sunrise']) && !empty($sunInfo['sunset'])) {
+                        $sunriseLocal = (new DateTimeImmutable('@' . (int)$sunInfo['sunrise']))->setTimezone($tz);
+                        $sunsetLocal = (new DateTimeImmutable('@' . (int)$sunInfo['sunset']))->setTimezone($tz);
+                        $sunriseOffsetTs = $sunriseLocal->getTimestamp() - (30 * 60);
+                        $sunsetOffsetTs = $sunsetLocal->getTimestamp() + (30 * 60);
+                        $sunriseStartOffsetMinutes = max(0, (int)floor(($sunriseOffsetTs - $dateMidnight->getTimestamp()) / 60));
+                        $sunsetEndOffsetMinutes = max(0, min(24 * 60, (int)ceil(($sunsetOffsetTs - $dateMidnight->getTimestamp()) / 60)));
+                    }
+                }
+            }
+        }
+
         render('Reservierungen', 'reservations', compact(
             'reservations',
             'aircraft',
@@ -2303,7 +2431,19 @@ switch ($page) {
             'completeDefaultFromAirfield',
             'completeLastReservationFlight',
             'prefillAircraftId',
-            'prefillStartDate'
+            'prefillStartDate',
+            'prefillStartTime',
+            'prefillDurationMinutes',
+            'calendarStartDate',
+            'calendarEndDate',
+            'calendarDaysCount',
+            'calendarAircraft',
+            'calendarReservationsByAircraft',
+            'canViewCalendar',
+            'isDayView',
+            'isMobileDevice',
+            'sunriseStartOffsetMinutes',
+            'sunsetEndOffsetMinutes'
         ));
         break;
 

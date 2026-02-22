@@ -9,6 +9,10 @@ return [
         'env' => 'prod',
         'timezone' => 'Europe/Zurich',
     ],
+    'location' => [
+        'lat' => 47.4581,
+        'lon' => 8.5555,
+    ],
     'db' => [
         'host' => '127.0.0.1',
         'port' => 3306,

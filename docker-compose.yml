@@ -12,6 +12,7 @@ services:
       - db
     environment:
       APP_ENV: local
+      TZ: Europe/Zurich
 
   db:
     image: mariadb:11
@@ -22,6 +23,7 @@ services:
       MARIADB_USER: plane
       MARIADB_PASSWORD: planepass
       MARIADB_ROOT_PASSWORD: rootpass
+      TZ: Europe/Zurich
     ports:
       - "3307:3306"
     volumes:
