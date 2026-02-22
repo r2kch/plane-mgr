@@ -100,7 +100,7 @@
             <?php
               $aircraftId = (int)$aircraftRow['id'];
               $canLink = (bool)($aircraftRow['can_link'] ?? true);
-              $forceLinks = true;
+              $forceLinks = false;
               $aircraftLink = sprintf(
                   'index.php?page=reservations&month=%s&prefill_aircraft_id=%d&prefill_start_date=%s',
                   urlencode(date('Y-m', strtotime((string)($calendarStartDate ?? date('Y-m-d'))))),
