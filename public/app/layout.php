@@ -24,47 +24,56 @@ function render(string $title, string $view, array $data = []): void
         <p>Reservation & Abrechnung</p>
       </div>
       <?php if ($user): ?>
-        <div class="user-chip">
-          <a href="index.php?page=profile"><?= h($user['first_name'] . ' ' . $user['last_name']) ?></a>
-          <a href="index.php?page=logout">Logout</a>
+        <div class="topbar-right">
+          <div class="user-chip">
+            <div class="user-meta">
+              <a class="user-name" href="index.php?page=profile"><?= h($user['first_name'] . ' ' . $user['last_name']) ?></a>
+            </div>
+            <div class="user-actions">
+              <a href="index.php?page=logout">Logout</a>
+            </div>
+          </div>
         </div>
       <?php endif; ?>
     </header>
 
     <?php if ($user): ?>
-      <nav class="nav-grid">
-        <a href="index.php">Dashboard</a>
-        <a href="index.php?page=news">News</a>
-        <?php if (module_enabled('reservations')): ?><a href="index.php?page=reservations">Reservierungen</a><?php endif; ?>
-        <?php if (module_enabled('billing')): ?><a href="index.php?page=my_invoices">Meine Rechnungen</a><?php endif; ?>
-        <a href="index.php?page=members">Mitglieder</a>
-        <?php if (has_role('admin')): ?>
-          <div class="nav-dropdown">
-            <span class="nav-link-red">Admin</span>
-            <div class="nav-dropdown-menu">
-              <a href="index.php?page=admin">Admin</a>
-              <a href="index.php?page=aircraft">Flugzeuge</a>
-              <a href="index.php?page=groups">Flugzeug-Gruppen</a>
-              <a href="index.php?page=users">Benutzer</a>
-              <a href="index.php?page=permissions">Rollen</a>
-              <?php if (module_enabled('audit')): ?><a href="index.php?page=audit">Audit-Log</a><?php endif; ?>
+      <div class="nav-row">
+        <nav class="nav-grid">
+          <a href="index.php">Dashboard</a>
+          <a href="index.php?page=news">News</a>
+          <?php if (module_enabled('reservations')): ?><a href="index.php?page=reservations">Reservierungen</a><?php endif; ?>
+          <?php if (module_enabled('billing')): ?><a href="index.php?page=my_invoices">Meine Rechnungen</a><?php endif; ?>
+          <a href="index.php?page=members">Mitglieder</a>
+          <?php if (has_role('admin')): ?>
+            <div class="nav-dropdown">
+              <span class="nav-link-red">Admin</span>
+              <div class="nav-dropdown-menu">
+                <a href="index.php?page=admin">Admin</a>
+                <a href="index.php?page=aircraft">Flugzeuge</a>
+                <a href="index.php?page=groups">Flugzeug-Gruppen</a>
+                <a href="index.php?page=users">Benutzer</a>
+                <a href="index.php?page=permissions">Rollen</a>
+                <?php if (module_enabled('audit')): ?><a href="index.php?page=audit">Audit-Log</a><?php endif; ?>
+              </div>
             </div>
-          </div>
-        <?php endif; ?>
-        <?php if (module_enabled('billing') && has_role('admin', 'accounting')): ?>
-          <div class="nav-dropdown">
-            <span class="nav-link-red">Buchhaltung</span>
-            <div class="nav-dropdown-menu">
-              <a href="index.php?page=accounting">Buchhaltung</a>
-              <a href="index.php?page=accounting_flights">Flüge</a>
-              <a href="index.php?page=credits">Gutschrift</a>
-              <a href="index.php?page=positions">Positionen</a>
-              <a href="index.php?page=invoices">Abrechnung</a>
-              <?php if (has_role('admin')): ?><a href="index.php?page=rates">Preise</a><?php endif; ?>
+          <?php endif; ?>
+          <?php if (module_enabled('billing') && has_role('admin', 'accounting')): ?>
+            <div class="nav-dropdown">
+              <span class="nav-link-red">Buchhaltung</span>
+              <div class="nav-dropdown-menu">
+                <a href="index.php?page=accounting">Buchhaltung</a>
+                <a href="index.php?page=accounting_flights">Flüge</a>
+                <a href="index.php?page=credits">Gutschrift</a>
+                <a href="index.php?page=positions">Positionen</a>
+                <a href="index.php?page=invoices">Abrechnung</a>
+                <?php if (has_role('admin')): ?><a href="index.php?page=rates">Preise</a><?php endif; ?>
+              </div>
             </div>
-          </div>
-        <?php endif; ?>
-      </nav>
+          <?php endif; ?>
+        </nav>
+        <div class="server-time-row"><?= date('d.m.Y H:i') ?></div>
+      </div>
     <?php endif; ?>
 
     <main class="panel">

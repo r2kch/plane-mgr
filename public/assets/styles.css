@@ -31,8 +31,8 @@ body {
 .topbar {
   display: flex;
   justify-content: space-between;
-  align-items: center;
-  margin-bottom: 16px;
+  align-items: flex-start;
+  margin-bottom: 8px;
 }
 
 .topbar h1 { margin: 0; font-size: 1.8rem; letter-spacing: 0.02em; }
@@ -41,18 +41,61 @@ body {
 .user-chip {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 16px;
   background: var(--card);
   border: 1px solid var(--line);
   border-radius: 999px;
   padding: 10px 14px;
 }
 
+.topbar-right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+.user-chip .user-meta {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.1;
+}
+
+.user-chip .user-name {
+  font-weight: 700;
+  text-decoration: none;
+  color: inherit;
+}
+
+.user-chip .user-actions a {
+  text-decoration: none;
+  color: var(--primary);
+  background: var(--primary-soft);
+  border-radius: 999px;
+  padding: 6px 10px;
+  font-weight: 700;
+}
+
+.server-time-row {
+  font-size: 0.95rem;
+  color: var(--muted);
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.nav-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
 .nav-grid {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  margin-bottom: 16px;
+  margin: 0;
 }
 
 .nav-grid a {
@@ -906,6 +949,7 @@ th {
 @media (max-width: 680px) {
   .app-shell { padding: 12px; }
   .topbar { flex-direction: column; align-items: flex-start; gap: 8px; }
+  .nav-row { flex-direction: column; align-items: flex-start; }
   .panel { padding: 12px; }
   .grid-form { grid-template-columns: 1fr; }
   .form-row { grid-template-columns: 1fr; }
