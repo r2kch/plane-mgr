@@ -1,4 +1,5 @@
 <h2>Benutzerverwaltung</h2>
+<?php if (can('admin.access')): ?><p class="access-note">Zugang: <code>users.manage</code> · Geschützt: <code>users.manage.protected</code></p><?php endif; ?>
 <div class="section-head-actions">
   <?php
   $newUserHref = 'index.php?page=users&new=' . (((int)($showNewUserForm ?? 0) === 1) ? '0' : '1');

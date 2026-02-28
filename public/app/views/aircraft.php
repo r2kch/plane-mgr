@@ -1,4 +1,5 @@
 <h2>Flugzeuge</h2>
+<?php if (can('admin.access')): ?><p class="access-note">Zugang: <code>admin.access</code></p><?php endif; ?>
 <?php if (!($vatEnabled ?? false)): ?>
   <div class="flash flash-error">Mehrwertsteuer durch Admin deaktiviert.</div>
 <?php else: ?>
@@ -66,8 +67,8 @@
         <th>Immatrikulation</th>
         <th>Typ</th>
         <th>Status</th>
-        <th>Start Hobbs</th>
-        <th>Start Landings</th>
+        <th>Hobbs Counter</th>
+        <th>Anzahl Landungen</th>
         <th>Basispreis</th>
         <th>Aktion</th>
       </tr>
@@ -82,8 +83,8 @@
             <td><a href="<?= h($openHref) ?>"><?= h($a['immatriculation']) ?></a></td>
             <td><a href="<?= h($openHref) ?>"><?= h($a['type']) ?></a></td>
             <td><?= h($statusLabel((string)$a['status'])) ?></td>
-            <td><?= h($formatHobbsClock((float)$a['start_hobbs'])) ?></td>
-            <td><?= (int)$a['start_landings'] ?></td>
+            <td><?= h($formatHobbsClock((float)$a['last_hobbs_end'])) ?></td>
+            <td><?= (int)$a['last_landings_count'] ?></td>
             <td><?= number_format((float)$a['base_hourly_rate'], 2, '.', '') ?> CHF</td>
             <td>
               <div class="inline-form">

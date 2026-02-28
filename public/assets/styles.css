@@ -91,6 +91,16 @@ body {
   margin-bottom: 16px;
 }
 
+.access-note {
+  margin: 4px 0 12px;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.access-note code {
+  font-size: 0.85rem;
+}
+
 .nav-grid {
   display: flex;
   flex-wrap: wrap;

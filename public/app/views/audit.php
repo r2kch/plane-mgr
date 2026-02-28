@@ -1,4 +1,5 @@
 <h2>Audit-Log</h2>
+<?php if (can('admin.access')): ?><p class="access-note">Zugang: <code>admin.access</code></p><?php endif; ?>
 <div class="table-wrap">
   <table>
     <thead><tr><th>Zeit</th><th>User</th><th>Action</th><th>Entity</th><th>ID</th><th>Meta</th></tr></thead>

@@ -1,4 +1,5 @@
 <h2>Gutschrift</h2>
+<?php if (can('admin.access')): ?><p class="access-note">Zugang: <code>billing.access</code></p><?php endif; ?>
 
 <?php $isEditing = !empty($editCredit); ?>
 <h3><?= $isEditing ? 'Gutschrift bearbeiten' : 'Gutschrift erfassen' ?></h3>

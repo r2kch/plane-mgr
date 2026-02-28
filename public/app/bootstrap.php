@@ -184,12 +184,24 @@ function db(): PDO
     }
 
     $permissionSeed = [
+        ['name' => 'admin.access', 'label' => 'Adminbereich sehen'],
+        ['name' => 'roles.manage', 'label' => 'Rollen und Berechtigungen verwalten'],
+        ['name' => 'roles.manage.protected', 'label' => 'Geschützte Rollen verwalten (z. B. Admin)'],
+        ['name' => 'users.manage', 'label' => 'Benutzer verwalten'],
+        ['name' => 'users.manage.protected', 'label' => 'Geschützte Benutzer verwalten (z. B. Admin)'],
+        ['name' => 'billing.access', 'label' => 'Buchhaltung sehen'],
+        ['name' => 'rates.manage', 'label' => 'Preise verwalten'],
+        ['name' => 'reservation.manage', 'label' => 'Reservierungen fremder Benutzer verwalten'],
+        ['name' => 'reservation.complete.any', 'label' => 'Reservierungen als durchgeführt markieren (alle)'],
+        ['name' => 'logbook.full', 'label' => 'Logbuch vollständig'],
+        ['name' => 'logbook.pilot', 'label' => 'Logbuch Pilot'],
         ['name' => 'reservation.create', 'label' => 'Reservierung erstellen'],
         ['name' => 'reservation.complete.own', 'label' => 'Reservierung als durchgeführt markieren (eigene)'],
         ['name' => 'calendar.view', 'label' => 'Kalender sehen'],
         ['name' => 'invoice.create', 'label' => 'Rechnung erzeugen (offene Stunden)'],
         ['name' => 'invoice.send', 'label' => 'Rechnung per E-Mail versenden (SMTP)'],
         ['name' => 'invoice.status.update', 'label' => 'Zahlungsstatus ändern (offen/bezahlt/überfällig)'],
+        ['name' => 'pilot.group.restricted', 'label' => 'Pilot ist gruppenlimitiert (Flugzeug-Gruppen)'],
         ['name' => 'news.manage', 'label' => 'News erstellen/bearbeiten/löschen'],
     ];
     $permissionStmt = $pdo->prepare('INSERT IGNORE INTO permissions (name, label) VALUES (?, ?)');
@@ -200,8 +212,8 @@ function db(): PDO
     $rolePermissionCount = (int)$pdo->query('SELECT COUNT(*) FROM role_permissions')->fetchColumn();
     if ($rolePermissionCount === 0) {
         $rolePermissionSeed = [
-            'pilot' => ['reservation.create', 'reservation.complete.own', 'calendar.view'],
-            'accounting' => ['calendar.view', 'invoice.create', 'invoice.send', 'invoice.status.update'],
+            'pilot' => ['reservation.create', 'reservation.complete.own', 'calendar.view', 'pilot.group.restricted', 'logbook.pilot'],
+            'accounting' => ['calendar.view', 'invoice.create', 'invoice.send', 'invoice.status.update', 'billing.access', 'logbook.full'],
             'board' => [],
             'member' => [],
             'member_passive' => [],
@@ -212,6 +224,18 @@ function db(): PDO
             foreach ($permissions as $permissionName) {
                 $rolePermissionStmt->execute([$roleName, $permissionName]);
             }
+        }
+    }
+
+    $defaultRolePermissions = [
+        'pilot' => ['pilot.group.restricted', 'logbook.pilot'],
+        'accounting' => ['billing.access', 'logbook.full'],
+    ];
+    $rolePermissionStmt = $pdo->prepare("INSERT IGNORE INTO role_permissions (role_id, permission_id)
+        SELECT r.id, p.id FROM roles r, permissions p WHERE r.name = ? AND p.name = ?");
+    foreach ($defaultRolePermissions as $roleName => $permissions) {
+        foreach ($permissions as $permissionName) {
+            $rolePermissionStmt->execute([$roleName, $permissionName]);
         }
     }
 
@@ -354,6 +378,15 @@ function has_role(string ...$roles): bool
 function require_role(string ...$roles): void
 {
     if (!has_role(...$roles)) {
+        http_response_code(403);
+        echo 'Kein Zugriff.';
+        exit;
+    }
+}
+
+function require_permission(string $permission): void
+{
+    if (!can($permission)) {
         http_response_code(403);
         echo 'Kein Zugriff.';
         exit;
@@ -653,6 +686,58 @@ function can(string $permission): bool
     return in_array($permission, $allPermissions, true);
 }
 
+function roles_grant_permission(array $roleNames, string $permission): bool
+{
+    $roleNames = array_values(array_filter(array_map('strval', $roleNames)));
+    if ($roleNames === []) {
+        return false;
+    }
+
+    $placeholders = implode(',', array_fill(0, count($roleNames), '?'));
+    $params = array_merge($roleNames, [$permission]);
+    $stmt = db()->prepare("SELECT 1
+        FROM roles r
+        JOIN role_permissions rp ON rp.role_id = r.id
+        JOIN permissions p ON p.id = rp.permission_id
+        WHERE r.name IN ($placeholders)
+          AND p.name = ?
+        LIMIT 1");
+    $stmt->execute($params);
+
+    return (bool)$stmt->fetchColumn();
+}
+
+function user_has_permission(int $userId, string $permission): bool
+{
+    $roles = user_roles($userId);
+    if (in_array('admin', $roles, true)) {
+        return true;
+    }
+
+    return roles_grant_permission($roles, $permission);
+}
+
+function count_active_users_with_permission(string $permission, ?int $excludeUserId = null): int
+{
+    $sql = "SELECT COUNT(DISTINCT u.id)
+        FROM users u
+        JOIN user_roles ur ON ur.user_id = u.id
+        JOIN roles r ON r.id = ur.role_id
+        LEFT JOIN role_permissions rp ON rp.role_id = r.id
+        LEFT JOIN permissions p ON p.id = rp.permission_id
+        WHERE u.is_active = 1
+          AND (r.name = 'admin' OR p.name = ?)";
+    $params = [$permission];
+    if ($excludeUserId !== null) {
+        $sql .= ' AND u.id <> ?';
+        $params[] = $excludeUserId;
+    }
+
+    $stmt = db()->prepare($sql);
+    $stmt->execute($params);
+    return (int)$stmt->fetchColumn();
+}
+
 function permissions_for_user(int $userId): array
 {
     static $cache = [];
@@ -698,9 +783,11 @@ function is_group_restricted_pilot(?array $user = null): bool
     }
 
     $roles = $user['roles'] ?? [];
-    return in_array('pilot', $roles, true)
-        && !in_array('admin', $roles, true)
-        && !in_array('accounting', $roles, true);
+    if (in_array('admin', $roles, true)) {
+        return false;
+    }
+
+    return roles_grant_permission($roles, 'pilot.group.restricted');
 }
 
 function permitted_aircraft_ids_for_user(int $userId): array

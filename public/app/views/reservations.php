@@ -10,7 +10,7 @@
     $prefillAircraft = isset($prefillAircraftId) ? (int)$prefillAircraftId : 0;
     $selectedAircraftId = $isEdit ? (int)$editReservation['aircraft_id'] : $prefillAircraft;
     $selectedUserId = $isEdit ? (int)$editReservation['user_id'] : (int)current_user()['id'];
-    $showPilotSelect = has_role('admin') || !has_role('pilot');
+    $showPilotSelect = can('reservation.manage');
     $prefillStart = isset($prefillStartDate) ? (string)$prefillStartDate : '';
     $prefillStartTime = isset($prefillStartTime) ? (string)$prefillStartTime : '';
     $baseStartDate = $prefillStart !== '' ? $prefillStart : $today;
@@ -256,7 +256,7 @@
       <?php foreach ($reservations as $r): ?>
         <?php $isMine = (int)$r['user_id'] === (int)current_user()['id']; ?>
         <?php $isFuture = strtotime($r['starts_at']) > $nowTs; ?>
-        <?php $canComplete = has_role('admin') || (can('reservation.complete.own') && $isMine); ?>
+        <?php $canComplete = can('reservation.complete.any') || can('reservation.manage') || (can('reservation.complete.own') && $isMine); ?>
         <tr>
           <td><?= h(date('d.m.Y H:i', strtotime($r['starts_at']))) ?></td>
           <td><?= h(date('d.m.Y H:i', strtotime($r['ends_at']))) ?></td>
@@ -269,13 +269,13 @@
               <form method="post" class="inline-form" onsubmit="return confirm('Reservierung wirklich löschen?');">
                 <input type="hidden" name="_csrf" value="<?= h(csrf_token()) ?>">
                 <input type="hidden" name="reservation_id" value="<?= (int)$r['id'] ?>">
-                <?php if ($isMine || has_role('admin')): ?>
+                <?php if ($isMine || can('reservation.manage')): ?>
                   <a class="btn-small" href="index.php?page=reservations&month=<?= h($month) ?>&edit_id=<?= (int)$r['id'] ?>">Bearbeiten</a>
                 <?php endif; ?>
                 <?php if ($canComplete): ?>
                   <a class="btn-small" href="index.php?page=reservations&month=<?= h($month) ?>&complete_id=<?= (int)$r['id'] ?>">Durchgeführt</a>
                 <?php endif; ?>
-                <?php if ((has_role('admin') || $isMine) && ($isFuture || has_role('admin'))): ?>
+                <?php if ((can('reservation.manage') || $isMine) && ($isFuture || can('reservation.manage'))): ?>
                   <button name="action" value="delete" class="btn-ghost btn-small">Löschen</button>
                 <?php endif; ?>
               </form>

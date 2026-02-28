@@ -1,4 +1,5 @@
 <h2>Rollen & Berechtigungen</h2>
+<?php if (can('admin.access')): ?><p class="access-note">Zugang: <code>roles.manage</code> · Geschützt: <code>roles.manage.protected</code></p><?php endif; ?>
 <p>Admin hat immer alle Rechte. Änderungen hier wirken sofort.</p>
 
 <h3>Neue Rolle</h3>
@@ -31,10 +32,19 @@
         if ($roleName === 'admin') {
             continue;
         }
+        $isProtectedRole = $roleName === 'admin';
+        $canManageProtected = can('roles.manage.protected');
         $openHref = 'index.php?page=permissions&open_role_id=' . $roleId;
         ?>
         <tr>
-          <td><a href="<?= h($openHref) ?>"><?= h(role_label($roleName)) ?></a></td>
+          <td>
+            <?php if ($isProtectedRole && !$canManageProtected): ?>
+              <?= h(role_label($roleName)) ?> <?php if (can('admin.access')): ?><span class="access-note">(geschützt)</span><?php endif; ?>
+            <?php else: ?>
+              <a href="<?= h($openHref) ?>"><?= h(role_label($roleName)) ?></a>
+              <?php if ($isProtectedRole && can('admin.access')): ?> <span class="access-note">(geschützt)</span><?php endif; ?>
+            <?php endif; ?>
+          </td>
         </tr>
       <?php endforeach; ?>
     </tbody>
@@ -55,9 +65,14 @@ foreach (($roles ?? []) as $candidate) {
   <?php
   $roleId = (int)$openRole['id'];
   $roleName = (string)$openRole['name'];
+  $isProtectedRole = $roleName === 'admin';
+  $canManageProtected = can('roles.manage.protected');
   ?>
   <article class="card" style="margin-bottom: 12px;">
     <h3><?= h(role_label($roleName)) ?></h3>
+    <?php if ($isProtectedRole && can('admin.access')): ?>
+      <?php if (can('admin.access')): ?><p class="access-note">Geschützte Rolle (Zugang: <code>roles.manage.protected</code>)</p><?php endif; ?>
+    <?php endif; ?>
     <form method="post">
       <input type="hidden" name="_csrf" value="<?= h(csrf_token()) ?>">
       <input type="hidden" name="role_id" value="<?= $roleId ?>">
@@ -80,7 +95,7 @@ foreach (($roles ?? []) as $candidate) {
                 <td>
                   <details>
                     <summary class="checkline">
-                      <input type="checkbox" name="permission_ids[]" value="<?= $permissionId ?>" <?= $checked ? 'checked' : '' ?>>
+                      <input type="checkbox" name="permission_ids[]" value="<?= $permissionId ?>" <?= $checked ? 'checked' : '' ?> <?= ($isProtectedRole && !$canManageProtected) ? 'disabled' : '' ?>>
                       <span><?= h($permissionLabel !== '' ? $permissionLabel : $permissionName) ?></span>
                     </summary>
                     <div style="opacity: 0.7; padding-left: 24px; padding-top: 6px;">
@@ -94,7 +109,9 @@ foreach (($roles ?? []) as $candidate) {
         </table>
       </div>
       <div class="inline-form">
-        <button class="btn-small">Speichern</button>
+        <?php if (!$isProtectedRole || $canManageProtected): ?>
+          <button class="btn-small">Speichern</button>
+        <?php endif; ?>
         <?php if (!in_array($roleName, ['admin', 'accounting'], true)): ?>
           <button class="btn-ghost btn-small" type="submit" form="delete-role-<?= $roleId ?>">Löschen</button>
         <?php endif; ?>

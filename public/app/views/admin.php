@@ -1,4 +1,5 @@
 <h2>Admin</h2>
+<?php if (can('admin.access')): ?><p class="access-note">Zugang: <code>admin.access</code></p><?php endif; ?>
 <div class="cards admin-hub-cards">
   <article class="card">
     <h3>Flugzeuge</h3>

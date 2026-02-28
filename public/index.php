@@ -140,7 +140,7 @@ switch ($page) {
                 FROM aircraft
                 WHERE status = 'active'
                 ORDER BY immatriculation ASC")->fetchAll();
-            $canReserve = has_role('admin') || can('reservation.create');
+            $canReserve = can('reservation.create');
             foreach ($calendarAircraft as &$aircraftRow) {
                 $aircraftRow['can_link'] = $canReserve && (!$groupRestrictedPilot || in_array((int)$aircraftRow['id'], $allowedAircraftIds, true));
             }
@@ -295,13 +295,39 @@ switch ($page) {
         render('News', 'news', compact('newsList', 'canManageNews', 'editNews'));
         break;
 
+    case 'fleet':
+        if (!(can('logbook.full') || can('logbook.pilot'))) {
+            http_response_code(403);
+            echo 'Kein Zugriff.';
+            exit;
+        }
+        $aircraft = db()->query("SELECT a.id, a.immatriculation, a.type, a.start_landings, a.start_hobbs,
+                COALESCE((
+                    SELECT rf.hobbs_end
+                    FROM reservation_flights rf
+                    JOIN reservations r ON r.id = rf.reservation_id
+                    WHERE r.aircraft_id = a.id
+                    ORDER BY rf.landing_time DESC, rf.id DESC
+                    LIMIT 1
+                ), a.start_hobbs) AS hours_total,
+                (a.start_landings + COALESCE((
+                    SELECT SUM(rf.landings_count)
+                    FROM reservation_flights rf
+                    JOIN reservations r ON r.id = rf.reservation_id
+                    WHERE r.aircraft_id = a.id
+                ), 0)) AS landings_total
+            FROM aircraft a
+            ORDER BY a.immatriculation")->fetchAll();
+        render('Flotte', 'fleet', compact('aircraft'));
+        break;
+
     case 'admin':
-        require_role('admin');
+        require_permission('admin.access');
         render('Admin', 'admin');
         break;
 
     case 'permissions':
-        require_role('admin');
+        require_permission('roles.manage');
 
         $roles = db()->query('SELECT id, name FROM roles ORDER BY name ASC')->fetchAll();
         $permissions = db()->query('SELECT id, name, label FROM permissions ORDER BY label ASC, name ASC')->fetchAll();
@@ -309,6 +335,14 @@ switch ($page) {
         $roleNamesById = [];
         foreach ($roles as $role) {
             $roleNamesById[(int)$role['id']] = (string)$role['name'];
+        }
+        $canManageProtectedRoles = can('roles.manage.protected');
+        $adminAccessPermissionId = null;
+        foreach ($permissions as $permissionRow) {
+            if ((string)$permissionRow['name'] === 'admin.access') {
+                $adminAccessPermissionId = (int)$permissionRow['id'];
+                break;
+            }
         }
 
         if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -378,8 +412,8 @@ switch ($page) {
             }
 
             $roleName = $roleNamesById[$roleId];
-            if ($roleName === 'admin') {
-                flash('error', 'Admin hat immer alle Rechte und kann hier nicht geändert werden.');
+            if ($roleName === 'admin' && !$canManageProtectedRoles) {
+                flash('error', 'Admin ist geschützt und kann hier nicht geändert werden.');
                 header('Location: index.php?page=permissions');
                 exit;
             }
@@ -387,6 +421,19 @@ switch ($page) {
             $permissionIds = array_values(array_unique(array_map(static fn($id): int => (int)$id, (array)($_POST['permission_ids'] ?? []))));
             $validPermissionIds = array_map(static fn(array $row): int => (int)$row['id'], $permissions);
             $permissionIds = array_values(array_intersect($validPermissionIds, $permissionIds));
+
+            if ($roleName === 'admin') {
+                if ($adminAccessPermissionId === null) {
+                    flash('error', 'admin.access ist nicht verfügbar.');
+                    header('Location: index.php?page=permissions');
+                    exit;
+                }
+                if (!in_array($adminAccessPermissionId, $permissionIds, true)) {
+                    flash('error', 'admin.access darf der Admin-Rolle nicht entzogen werden.');
+                    header('Location: index.php?page=permissions&open_role_id=' . $roleId);
+                    exit;
+                }
+            }
 
             try {
                 db()->beginTransaction();
@@ -424,12 +471,12 @@ switch ($page) {
         break;
 
     case 'accounting':
-        require_role('admin', 'accounting');
+        require_permission('billing.access');
         render('Buchhaltung', 'accounting');
         break;
 
     case 'accounting_flights':
-        require_role('admin', 'accounting');
+        require_permission('billing.access');
         $aircraft = db()->query("SELECT id, immatriculation, type, status
             FROM aircraft
             ORDER BY immatriculation ASC")->fetchAll();
@@ -437,7 +484,7 @@ switch ($page) {
         break;
 
     case 'credits':
-        require_role('admin', 'accounting');
+        require_permission('billing.access');
 
         if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (!csrf_check($_POST['_csrf'] ?? null)) {
@@ -564,7 +611,7 @@ switch ($page) {
         break;
 
     case 'positions':
-        require_role('admin', 'accounting');
+        require_permission('billing.access');
 
         $rolesList = db()->query('SELECT name FROM roles ORDER BY name ASC')->fetchAll();
         $activeUsers = db()->query("SELECT id, CONCAT(first_name, ' ', last_name) AS name
@@ -733,7 +780,7 @@ switch ($page) {
         break;
 
     case 'aircraft':
-        require_role('admin');
+        require_permission('admin.access');
         $openAircraftId = (int)($_GET['open_aircraft_id'] ?? 0);
         $showNewAircraftForm = ((int)($_GET['new'] ?? 0)) === 1;
         $parseHobbsClock = static function (string $value): ?float {
@@ -821,13 +868,29 @@ switch ($page) {
             exit;
         }
 
-        $aircraft = db()->query('SELECT * FROM aircraft ORDER BY immatriculation')->fetchAll();
+        $aircraft = db()->query("SELECT a.*,
+                COALESCE((
+                    SELECT rf.hobbs_end
+                    FROM reservation_flights rf
+                    JOIN reservations r ON r.id = rf.reservation_id
+                    WHERE r.aircraft_id = a.id
+                    ORDER BY rf.landing_time DESC, rf.id DESC
+                    LIMIT 1
+                ), a.start_hobbs) AS last_hobbs_end,
+                (a.start_landings + COALESCE((
+                    SELECT SUM(rf.landings_count)
+                    FROM reservation_flights rf
+                    JOIN reservations r ON r.id = rf.reservation_id
+                    WHERE r.aircraft_id = a.id
+                ), 0)) AS last_landings_count
+            FROM aircraft a
+            ORDER BY a.immatriculation")->fetchAll();
         $vatEnabled = (bool)config('invoice.vat.enabled', false);
         render('Flugzeuge', 'aircraft', compact('aircraft', 'openAircraftId', 'showNewAircraftForm', 'vatEnabled'));
         break;
 
     case 'groups':
-        require_role('admin');
+        require_permission('admin.access');
         $openGroupId = (int)($_GET['open_group_id'] ?? 0);
         $showNewGroupForm = ((int)($_GET['new'] ?? 0)) === 1;
 
@@ -970,14 +1033,20 @@ switch ($page) {
         break;
 
     case 'aircraft_flights':
-        require_role('admin', 'accounting');
+        $canEditLogbook = can('logbook.full');
+        $canViewLogbook = $canEditLogbook || can('logbook.pilot');
+        if (!$canViewLogbook) {
+            http_response_code(403);
+            echo 'Kein Zugriff.';
+            exit;
+        }
         $aircraftId = (int)($_GET['aircraft_id'] ?? 0);
         if ($aircraftId <= 0) {
             http_response_code(404);
             exit('Flugzeug nicht gefunden.');
         }
 
-        $aircraftStmt = db()->prepare('SELECT id, immatriculation, type FROM aircraft WHERE id = ?');
+        $aircraftStmt = db()->prepare('SELECT id, immatriculation, type, start_landings FROM aircraft WHERE id = ?');
         $aircraftStmt->execute([$aircraftId]);
         $aircraft = $aircraftStmt->fetch();
         if (!$aircraft) {
@@ -1013,6 +1082,11 @@ switch ($page) {
         };
 
         if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+            if (!$canEditLogbook) {
+                flash('error', 'Keine Berechtigung.');
+                header('Location: index.php?page=aircraft_flights&aircraft_id=' . $aircraftId);
+                exit;
+            }
             if (!csrf_check($_POST['_csrf'] ?? null)) {
                 flash('error', 'Ungültiger Request.');
                 header('Location: index.php?page=aircraft_flights&aircraft_id=' . $aircraftId);
@@ -1128,9 +1202,11 @@ switch ($page) {
 
         $flightsStmt = db()->prepare("SELECT rf.*, r.id AS reservation_id, r.invoice_id,
                 i.invoice_number,
-                CONCAT(p.first_name, ' ', p.last_name) AS pilot_name
+                CONCAT(p.first_name, ' ', p.last_name) AS pilot_name,
+                a.start_landings AS aircraft_start_landings
             FROM reservation_flights rf
             JOIN reservations r ON r.id = rf.reservation_id
+            JOIN aircraft a ON a.id = r.aircraft_id
             JOIN users p ON p.id = rf.pilot_user_id
             LEFT JOIN invoices i ON i.id = r.invoice_id
             WHERE r.aircraft_id = ?
@@ -1138,9 +1214,13 @@ switch ($page) {
             ORDER BY rf.start_time DESC, rf.id DESC");
         $flightsStmt->execute([$aircraftId]);
         $flights = $flightsStmt->fetchAll();
-        foreach ($flights as &$flight) {
+        $runningLandings = (int)($aircraft['start_landings'] ?? 0);
+        for ($i = count($flights) - 1; $i >= 0; $i--) {
+            $flight = &$flights[$i];
             $flight['hobbs_start_clock'] = $formatHobbsClock((float)$flight['hobbs_start']);
             $flight['hobbs_end_clock'] = $formatHobbsClock((float)$flight['hobbs_end']);
+            $runningLandings += (int)($flight['landings_count'] ?? 0);
+            $flight['landings_total'] = $runningLandings;
         }
         unset($flight);
 
@@ -1153,14 +1233,20 @@ switch ($page) {
                 WHERE ur.user_id = u.id AND r.name = 'pilot'
               )
             ORDER BY u.last_name, u.first_name")->fetchAll();
-        $editFlightId = (int)($_GET['edit_id'] ?? 0);
-        $backPage = has_role('admin') ? 'aircraft' : 'accounting_flights';
+        $editFlightId = $canEditLogbook ? (int)($_GET['edit_id'] ?? 0) : 0;
+        if (can('admin.access')) {
+            $backPage = 'aircraft';
+        } elseif (can('billing.access')) {
+            $backPage = 'accounting_flights';
+        } else {
+            $backPage = 'reservations';
+        }
 
-        render('Durchgeführte Flüge', 'aircraft_flights', compact('aircraft', 'flights', 'pilots', 'editFlightId', 'backPage'));
+        render('Durchgeführte Flüge', 'aircraft_flights', compact('aircraft', 'flights', 'pilots', 'editFlightId', 'backPage', 'canEditLogbook'));
         break;
 
     case 'users':
-        require_role('admin');
+        require_permission('users.manage');
         $userSearch = trim((string)($_GET['q'] ?? ''));
         $openUserId = (int)($_GET['open_user_id'] ?? 0);
         $showNewUserForm = ((int)($_GET['new'] ?? 0)) === 1;
@@ -1169,6 +1255,17 @@ switch ($page) {
         $allGroups = db()->query('SELECT id, name FROM aircraft_groups ORDER BY name')->fetchAll();
         $validGroupIds = array_map(static fn(array $row): int => (int)$row['id'], $allGroups);
         $rolesList = db()->query('SELECT name FROM roles ORDER BY name ASC')->fetchAll(PDO::FETCH_COLUMN);
+        $rolesGrantAdminAccess = static function (array $roleNames): bool {
+            $roleNames = array_values(array_filter(array_map('strval', $roleNames)));
+            if (in_array('admin', $roleNames, true)) {
+                return true;
+            }
+
+            return roles_grant_permission($roleNames, 'admin.access');
+        };
+        $otherActiveAdminsCount = static function (int $excludeUserId): int {
+            return count_active_users_with_permission('admin.access', $excludeUserId);
+        };
 
         if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (!csrf_check($_POST['_csrf'] ?? null)) {
@@ -1204,6 +1301,12 @@ switch ($page) {
                 }
                 if (!isset($countryOptions[$countryCode])) {
                     $countryCode = 'CH';
+                }
+
+                if ($rolesGrantAdminAccess($roles) && !can('users.manage.protected')) {
+                    flash('error', 'Admin-Benutzer dürfen nur mit geschützter Berechtigung erstellt werden.');
+                    header('Location: ' . $usersPageUrl);
+                    exit;
                 }
 
                 try {
@@ -1265,6 +1368,31 @@ switch ($page) {
 
                 if ($userId === (int)current_user()['id'] && $isActive === 0) {
                     flash('error', 'Eigener Benutzer kann nicht deaktiviert werden.');
+                    header('Location: ' . $usersPageUrl);
+                    exit;
+                }
+
+                $currentRoles = user_roles($userId);
+                $targetHasAdminAccess = $rolesGrantAdminAccess($currentRoles);
+                $targetWillHaveAdminAccess = $rolesGrantAdminAccess($roles);
+
+                if ($targetHasAdminAccess && !can('users.manage.protected')) {
+                    flash('error', 'Admin-Benutzer dürfen nur mit geschützter Berechtigung bearbeitet werden.');
+                    header('Location: ' . $usersPageUrl);
+                    exit;
+                }
+                if ($userId === (int)current_user()['id'] && !$targetWillHaveAdminAccess) {
+                    flash('error', 'Du kannst dir den Admin-Zugang nicht selbst entziehen.');
+                    header('Location: ' . $usersPageUrl);
+                    exit;
+                }
+                if ($targetHasAdminAccess && !$targetWillHaveAdminAccess && $otherActiveAdminsCount($userId) === 0) {
+                    flash('error', 'Mindestens ein aktiver Admin muss erhalten bleiben.');
+                    header('Location: ' . $usersPageUrl);
+                    exit;
+                }
+                if ($isActive === 0 && $targetHasAdminAccess && $otherActiveAdminsCount($userId) === 0) {
+                    flash('error', 'Der letzte aktive Admin kann nicht deaktiviert werden.');
                     header('Location: ' . $usersPageUrl);
                     exit;
                 }
@@ -1333,6 +1461,18 @@ switch ($page) {
 
                 if ($userId === $adminId) {
                     flash('error', 'Eigener Benutzer kann nicht gelöscht werden.');
+                    header('Location: ' . $usersPageUrl);
+                    exit;
+                }
+
+                $targetHasAdminAccess = $rolesGrantAdminAccess(user_roles($userId));
+                if ($targetHasAdminAccess && !can('users.manage.protected')) {
+                    flash('error', 'Admin-Benutzer dürfen nur mit geschützter Berechtigung gelöscht werden.');
+                    header('Location: ' . $usersPageUrl);
+                    exit;
+                }
+                if ($targetHasAdminAccess && $otherActiveAdminsCount($userId) === 0) {
+                    flash('error', 'Der letzte aktive Admin kann nicht gelöscht werden.');
                     header('Location: ' . $usersPageUrl);
                     exit;
                 }
@@ -1424,7 +1564,7 @@ switch ($page) {
         break;
 
     case 'rates':
-        require_role('admin');
+        require_permission('rates.manage');
 
         if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (!csrf_check($_POST['_csrf'] ?? null)) {
@@ -1514,7 +1654,9 @@ switch ($page) {
             $prefillDurationMinutes = 0;
         }
         $canCompleteReservation = static function (int $ownerId): bool {
-            return has_role('admin') || (can('reservation.complete.own') && $ownerId === (int)current_user()['id']);
+            return can('reservation.complete.any')
+                || can('reservation.manage')
+                || (can('reservation.complete.own') && $ownerId === (int)current_user()['id']);
         };
         $groupRestrictedPilot = is_group_restricted_pilot();
         $currentUserId = (int)current_user()['id'];
@@ -1746,12 +1888,10 @@ switch ($page) {
 
             if ($action === 'create') {
                 $aircraftId = (int)$_POST['aircraft_id'];
-                if (has_role('admin')) {
+                if (can('reservation.manage')) {
                     $userId = (int)($_POST['user_id'] ?? (int)current_user()['id']);
-                } elseif (has_role('pilot')) {
-                    $userId = (int)current_user()['id'];
                 } else {
-                    $userId = (int)($_POST['user_id'] ?? 0);
+                    $userId = (int)current_user()['id'];
                 }
                 $start = (string)($_POST['starts_at'] ?? '');
                 $end = (string)($_POST['ends_at'] ?? '');
@@ -1844,14 +1984,16 @@ switch ($page) {
                 }
 
                 $isOwner = (int)$reservation['user_id'] === (int)current_user()['id'];
-                if (!(has_role('admin') || $isOwner)) {
+                if (!(can('reservation.manage') || $isOwner)) {
                     flash('error', 'Keine Berechtigung zum Bearbeiten.');
                     header('Location: index.php?page=reservations&month=' . urlencode($month));
                     exit;
                 }
 
                 $aircraftId = (int)($_POST['aircraft_id'] ?? 0);
-                $userId = has_role('admin') ? (int)($_POST['user_id'] ?? $reservation['user_id']) : (int)$reservation['user_id'];
+                $userId = can('reservation.manage')
+                    ? (int)($_POST['user_id'] ?? $reservation['user_id'])
+                    : (int)$reservation['user_id'];
                 $startDate = (string)($_POST['start_date'] ?? '');
                 $startHour = (int)($_POST['start_hour'] ?? -1);
                 $startMinute = (int)($_POST['start_minute'] ?? -1);
@@ -1933,7 +2075,7 @@ switch ($page) {
                 }
 
                 $isOwner = (int)$reservation['user_id'] === (int)current_user()['id'];
-                if (!(has_role('admin') || $isOwner)) {
+                if (!(can('reservation.manage') || $isOwner)) {
                     flash('error', 'Keine Berechtigung zum Löschen.');
                     header('Location: index.php?page=reservations&month=' . urlencode($month));
                     exit;
@@ -2251,7 +2393,7 @@ switch ($page) {
                   AND r.status = "booked"';
         $params = [$monthStart, $monthEnd];
 
-        if (has_role('pilot') && !has_role('admin') && !has_role('accounting')) {
+        if ($groupRestrictedPilot) {
             $sql .= ' AND r.user_id = ?';
             $params[] = (int)current_user()['id'];
         }
@@ -2266,7 +2408,7 @@ switch ($page) {
                 if ((int)$row['id'] === $editId) {
                     $isOwner = (int)$row['user_id'] === (int)current_user()['id'];
                     $isFuture = strtotime((string)$row['starts_at']) > time();
-                    if ((has_role('admin') || $isOwner) && $isFuture) {
+                    if ((can('reservation.manage') || $isOwner) && $isFuture) {
                         $editReservation = $row;
                     }
                     break;
@@ -2375,7 +2517,7 @@ switch ($page) {
                 ORDER BY immatriculation ASC")->fetchAll();
             $groupRestrictedPilot = is_group_restricted_pilot();
             $allowedAircraftIds = $groupRestrictedPilot ? permitted_aircraft_ids_for_user((int)current_user()['id']) : [];
-            $canReserve = has_role('admin') || can('reservation.create');
+            $canReserve = can('reservation.create');
             foreach ($calendarAircraft as &$aircraftRow) {
                 $aircraftRow['can_link'] = $canReserve && (!$groupRestrictedPilot || in_array((int)$aircraftRow['id'], $allowedAircraftIds, true));
             }
@@ -2448,7 +2590,7 @@ switch ($page) {
         break;
 
     case 'invoices':
-        require_role('admin', 'accounting');
+        require_permission('billing.access');
         $nextInvoiceNumberForYear = static function (int $year): string {
             $prefix = 'R' . $year . '-';
             $stmt = db()->prepare("SELECT COALESCE(MAX(CAST(SUBSTRING(invoice_number, 7) AS UNSIGNED)), 0)
@@ -3284,7 +3426,7 @@ switch ($page) {
         break;
 
     case 'manual_flight':
-        require_role('admin', 'accounting');
+        require_permission('billing.access');
 
         if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (!csrf_check($_POST['_csrf'] ?? null)) {
@@ -3483,7 +3625,7 @@ switch ($page) {
         }
 
         $currentUserId = (int)current_user()['id'];
-        $hasInvoiceAccess = has_role('admin', 'accounting') || (int)$invoice['user_id'] === $currentUserId;
+        $hasInvoiceAccess = can('billing.access') || (int)$invoice['user_id'] === $currentUserId;
         if (!$hasInvoiceAccess) {
             http_response_code(403);
             exit('Kein Zugriff.');
@@ -3757,7 +3899,7 @@ switch ($page) {
         break;
 
     case 'audit':
-        require_role('admin');
+        require_permission('admin.access');
         $logs = db()->query("SELECT a.*, CONCAT(u.first_name, ' ', u.last_name) AS actor
             FROM audit_logs a
             JOIN users u ON u.id = a.actor_user_id

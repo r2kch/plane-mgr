@@ -1,4 +1,5 @@
 <h2>Flüge</h2>
+<?php if (can('admin.access')): ?><p class="access-note">Zugang: <code>billing.access</code></p><?php endif; ?>
 <p>Logbuch pro Flugzeug öffnen und Flüge als verrechenbar oder nicht verrechenbar markieren.</p>
 <div class="section-head-actions">
   <a class="btn-small btn-danger-solid" href="index.php?page=manual_flight">Flug händisch eintragen</a>

@@ -1,4 +1,5 @@
 <h2>Gruppen</h2>
+<?php if (can('admin.access')): ?><p class="access-note">Zugang: <code>admin.access</code></p><?php endif; ?>
 <div class="section-head-actions">
   <a class="btn-small" href="index.php?page=groups&new=<?= ((int)($showNewGroupForm ?? 0) === 1) ? '0' : '1' ?>">Neue Gruppe</a>
 </div>

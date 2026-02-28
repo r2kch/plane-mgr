@@ -42,10 +42,11 @@ function render(string $title, string $view, array $data = []): void
         <nav class="nav-grid">
           <a href="index.php">Dashboard</a>
           <a href="index.php?page=news">News</a>
+          <?php if (can('logbook.full') || can('logbook.pilot')): ?><a href="index.php?page=fleet">Flotte</a><?php endif; ?>
           <?php if (module_enabled('reservations')): ?><a href="index.php?page=reservations">Reservierungen</a><?php endif; ?>
           <?php if (module_enabled('billing')): ?><a href="index.php?page=my_invoices">Meine Rechnungen</a><?php endif; ?>
           <a href="index.php?page=members">Mitglieder</a>
-          <?php if (has_role('admin')): ?>
+          <?php if (can('admin.access')): ?>
             <div class="nav-dropdown">
               <span class="nav-link-red">Admin</span>
               <div class="nav-dropdown-menu">
@@ -58,7 +59,7 @@ function render(string $title, string $view, array $data = []): void
               </div>
             </div>
           <?php endif; ?>
-          <?php if (module_enabled('billing') && has_role('admin', 'accounting')): ?>
+          <?php if (module_enabled('billing') && can('billing.access')): ?>
             <div class="nav-dropdown">
               <span class="nav-link-red">Buchhaltung</span>
               <div class="nav-dropdown-menu">
@@ -67,7 +68,7 @@ function render(string $title, string $view, array $data = []): void
                 <a href="index.php?page=credits">Gutschrift</a>
                 <a href="index.php?page=positions">Positionen</a>
                 <a href="index.php?page=invoices">Abrechnung</a>
-                <?php if (has_role('admin')): ?><a href="index.php?page=rates">Preise</a><?php endif; ?>
+                <?php if (can('rates.manage')): ?><a href="index.php?page=rates">Preise</a><?php endif; ?>
               </div>
             </div>
           <?php endif; ?>

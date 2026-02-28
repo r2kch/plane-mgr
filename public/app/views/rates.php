@@ -1,4 +1,5 @@
 <h2>Preisverwaltung pro Pilot & Flugzeug</h2>
+<?php if (can('admin.access')): ?><p class="access-note">Zugang: <code>rates.manage</code></p><?php endif; ?>
 <p>Wenn kein individueller Preis gesetzt ist, gilt automatisch der Basispreis des Flugzeugs.</p>
 <?php
   $isEditRate = !empty($editRate);

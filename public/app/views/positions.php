@@ -1,4 +1,5 @@
 <h2>Positionen</h2>
+<?php if (can('admin.access')): ?><p class="access-note">Zugang: <code>billing.access</code></p><?php endif; ?>
 
 <h3>Position erfassen</h3>
 <form method="post" class="grid-form">

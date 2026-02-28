@@ -1,4 +1,5 @@
 <h2>Reservierungen</h2>
+<?php if (can('admin.access')): ?><p class="access-note">Zugang: <code>billing.access</code></p><?php endif; ?>
 <h3>Flug erfassen</h3>
 <?php
   $firstAircraftId = !empty($aircraft) ? (int)$aircraft[0]['id'] : 0;

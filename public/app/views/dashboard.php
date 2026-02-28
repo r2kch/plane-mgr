@@ -273,7 +273,7 @@
           <?php foreach ($upcomingReservations as $r): ?>
             <?php
               $isMine = (int)$r['user_id'] === (int)current_user()['id'];
-              $canComplete = has_role('admin') || (can('reservation.complete.own') && $isMine);
+              $canComplete = can('reservation.complete.any') || can('reservation.manage') || (can('reservation.complete.own') && $isMine);
               $month = date('Y-m', strtotime($r['starts_at']));
             ?>
             <tr>
@@ -283,7 +283,7 @@
               <td><?= h($r['pilot_name']) ?></td>
               <td class="cell-wrap"><?= h((string)$r['notes']) ?></td>
               <td>
-                <?php if ($isMine || has_role('admin') || $canComplete): ?>
+                <?php if ($isMine || can('reservation.manage') || $canComplete): ?>
                   <div class="inline-form">
                     <a class="btn-small" href="index.php?page=reservations&month=<?= h($month) ?>&edit_id=<?= (int)$r['id'] ?>">Bearbeiten</a>
                     <?php if ($canComplete): ?>

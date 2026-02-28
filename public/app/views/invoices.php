@@ -1,4 +1,5 @@
 <h2>Abrechnung</h2>
+<?php if (can('admin.access')): ?><p class="access-note">Zugang: <code>billing.access</code></p><?php endif; ?>
 <div class="section-head-actions">
   <a class="btn-small btn-danger-solid" href="index.php?page=manual_flight">Flug händisch eintragen</a>
   <form method="post" class="inline-form" onsubmit="return confirm('Alle Rechnungen erstellen und versenden?');">
